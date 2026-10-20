@@ -3096,6 +3096,140 @@ main {
 .direct-search:hover {
   text-decoration: underline;
 }
+.quick-solution,
+.published-prices,
+.research-alternatives {
+  margin: 16px 0;
+  padding: 16px;
+  border: 1px solid #dce5d4;
+  border-radius: 10px;
+  background: #f8faf4;
+  color: #354d2d;
+  font-size: 12px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.quick-solution h4,
+.published-prices h4,
+.research-alternatives h4 {
+  font-size: 14px;
+  margin-bottom: 8px;
+}
+.quick-solution > strong {
+  display: block;
+  font-size: 12px;
+}
+.solution-next {
+  margin-top: 10px;
+}
+.cost-basis-note,
+.repair-options {
+  margin-top: 10px;
+  color: #536548;
+  font-size: 11px;
+  line-height: 1.8;
+}
+.cost-source-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  line-height: 1.7;
+  margin-top: 9px;
+  color: #285935;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.repair-options ul,
+.published-price-list {
+  padding: 0;
+  list-style: none;
+}
+.repair-options li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 5px 12px;
+  padding-block: 8px;
+  border-bottom: 1px solid #dce5d4;
+}
+.research-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-block: 12px;
+}
+.research-links a,
+.research-links button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: white;
+  border: 1px solid #bacaad;
+  border-radius: 6px;
+  padding: 8px 10px;
+  color: #285935;
+  font: inherit;
+  cursor: pointer;
+  min-height: 40px;
+}
+.research-alternatives details,
+.published-prices details {
+  margin-top: 12px;
+}
+.research-alternatives summary,
+.published-prices summary,
+.repair-options summary {
+  cursor: pointer;
+  font-weight: 600;
+  padding-block: 5px;
+}
+.research-alternatives details p {
+  margin-top: 8px;
+}
+.research-alternatives label {
+  display: block;
+  margin: 10px 0 6px;
+}
+.research-alternatives textarea {
+  width: 100%;
+  resize: vertical;
+  border: 1px solid #bacaad;
+  border-radius: 6px;
+  padding: 10px;
+  color: #354d2d;
+  background: white;
+  font: inherit;
+}
+.published-price-list li {
+  border-top: 1px solid #dce5d4;
+  padding-block: 13px;
+}
+.published-price-list li > span,
+.published-price-list li > strong,
+.published-price-list li > small {
+  display: block;
+}
+.published-price-list li > strong {
+  font-size: 23px;
+  color: #285935;
+  margin-block: 2px;
+}
+.published-price-list li > small {
+  font-size: 11px;
+}
+.published-price-list li > p {
+  margin-top: 8px;
+}
+.published-prices blockquote {
+  margin: 7px 0;
+  border-left: 3px solid #bacaad;
+  padding-left: 12px;
+}
+.published-prices a {
+  color: #285935;
+  text-decoration: underline;
+}
 .spinning {
   animation: research-spin 1.2s linear infinite;
 }

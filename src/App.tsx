@@ -47,7 +47,11 @@ import { appliances, estimate, formatMoney, getDefaultReplacementCost } from './
 import type { ApplianceId, AssessmentInput, Currency } from './lib/estimator'
 import { readSavedEstimates, writeSavedEstimates } from './lib/storage'
 import type { SavedEstimate } from './lib/storage'
-import { buildMapsSearchUrl, getSuggestedService } from './lib/service-search'
+import {
+  buildMapsSearchUrl,
+  buildReplacementSearchUrl,
+  getSuggestedService,
+} from './lib/service-search'
 
 type Page = 'estimate' | 'saved' | 'resources'
 type Detail = 'overview' | 'guide' | 'materials'
@@ -280,8 +284,8 @@ function App() {
       `Recommendation: ${result.headline}`,
       `Possible cause: ${result.fault}`,
       result.explanation,
-      `Repair estimate: ${money(result.repairCost.low)}–${money(result.repairCost.high)}`,
-      `Replacement budget: ${money(result.replacementCost)}`,
+      `Unverified repair allowance: ${money(result.repairCost.low)}–${money(result.repairCost.high)}`,
+      `Whole-device replacement budget (${result.replacementCostSource}): ${money(result.replacementCost)}`,
       `Potential material value: ${money(result.recyclingValue.low)}–${money(result.recyclingValue.high)}`,
       ...(result.safetyWarning ? ['', `Safety: ${result.safetyWarning}`] : []),
       '',
@@ -662,7 +666,8 @@ function App() {
                           </div>
                           <div className="field">
                             <label htmlFor="replacement">
-                              Replacement budget <span className="optional">Optional</span>
+                              Replacement budget{' '}
+                              <span className="optional">Whole device · Optional</span>
                             </label>
                             <div className="input-unit currency-input">
                               <span>{currency === 'INR' ? '₹' : '$'}</span>
@@ -680,7 +685,8 @@ function App() {
                           </div>
                         </div>
                         <p id="budget-hint" className="budget-note">
-                          Leave the budget blank to use a typical replacement price.
+                          Enter the current price of an equivalent new device, not the faulty part.
+                          Leave blank to use an illustrative category default.
                         </p>
                         <div className="form-footer">
                           <div className="currency-select">
@@ -797,10 +803,36 @@ function App() {
                                 <strong>{assessment.result.fault}</strong>
                               </div>
                             </div>
+                            <section
+                              className="quick-solution"
+                              aria-labelledby="quick-solution-title"
+                            >
+                              <h4 id="quick-solution-title">What to do now</h4>
+                              <strong>
+                                {
+                                  assessment.result.guide[
+                                    assessment.result.repairCostBasis === 'safety' ? 0 : 1
+                                  ].title
+                                }
+                              </strong>
+                              <p>
+                                {
+                                  assessment.result.guide[
+                                    assessment.result.repairCostBasis === 'safety' ? 0 : 1
+                                  ].description
+                                }
+                              </p>
+                              <p className="solution-next">
+                                <strong>Then:</strong>{' '}
+                                {assessment.result.repairCostBasis === 'safety'
+                                  ? 'Tell a qualified service provider about the hazard and follow their handling advice.'
+                                  : 'Check published prices below, then ask a repairer to confirm the fault and the full cost before ordering parts.'}
+                              </p>
+                            </section>
                             <div className="cost-comparison">
                               <div className="cost-card repair-cost">
                                 <Wrench size={18} />
-                                <span>Estimated repair</span>
+                                <span>Unverified repair allowance</span>
                                 <strong>
                                   {formatMoney(
                                     assessment.result.repairCost.low,
@@ -814,11 +846,20 @@ function App() {
                                     )}
                                   </span>
                                 </strong>
-                                <small>Indicative parts + labor</small>
+                                <small>
+                                  {assessment.result.repairCostBasis === 'symptom'
+                                    ? 'Symptom-based parts + labour assumption'
+                                    : assessment.result.repairCostBasis === 'multiple'
+                                      ? 'Range across possible repairs; not a combined bill'
+                                      : 'Broad allowance; diagnosis and quote needed'}
+                                </small>
+                                <a className="cost-source-link" href="#web-research-title">
+                                  Check against web sources
+                                </a>
                               </div>
                               <div className="cost-card">
                                 <Recycle size={19} />
-                                <span>Potential recycling value</span>
+                                <span>Estimated scrap payout</span>
                                 <strong>
                                   {formatMoney(
                                     assessment.result.recyclingValue.low,
@@ -832,11 +873,33 @@ function App() {
                                     )}
                                   </span>
                                 </strong>
-                                <small>Material recovery, before fees</small>
+                                <small>
+                                  Material recovery, before fees; not a replacement price
+                                </small>
                               </div>
                             </div>
+                            {assessment.result.repairOptions.length > 1 && (
+                              <details className="repair-options">
+                                <summary>See the possible repair costs</summary>
+                                <ul>
+                                  {assessment.result.repairOptions.map((option) => (
+                                    <li key={option.fault}>
+                                      <span>{option.fault}</span>
+                                      <strong>
+                                        {formatMoney(option.low, assessment.input.currency)}–
+                                        {formatMoney(option.high, assessment.input.currency)}
+                                      </strong>
+                                    </li>
+                                  ))}
+                                </ul>
+                                <p>
+                                  These are alternative planning scenarios, not prices verified on
+                                  the web. Inspection may find one cause or multiple repairs.
+                                </p>
+                              </details>
+                            )}
                             <div className="replacement-line">
-                              <span>Replacement budget</span>
+                              <span>Whole-device replacement budget</span>
                               <strong>
                                 {formatMoney(
                                   assessment.result.replacementCost,
@@ -844,6 +907,25 @@ function App() {
                                 )}
                               </strong>
                             </div>
+                            <p className="cost-basis-note">
+                              {assessment.result.replacementCostSource === 'entered'
+                                ? 'Using the replacement price you entered.'
+                                : `Using an illustrative ${device.name.toLowerCase()} price; the exact model has not been priced.`}{' '}
+                              A new-device price stays the same across faults. Scrap value also
+                              stays similar because it uses the device’s materials.
+                            </p>
+                            <a
+                              className="cost-source-link"
+                              href={buildReplacementSearchUrl(
+                                assessment.input.appliance,
+                                brandModel,
+                                assessment.input.currency,
+                              )}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              Look up a new-device price <ArrowUpRight size={13} />
+                            </a>
                             {assessment.result.recommendation === 'repair' &&
                               assessment.result.remainingYears > 0 && (
                                 <div className="life-note">

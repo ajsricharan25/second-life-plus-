@@ -88,7 +88,23 @@ async function callHandler(
 }
 
 function successfulFetch() {
-  return vi.fn<typeof fetch>().mockImplementation(async () => Response.json(providerResult()))
+  return vi.fn<typeof fetch>().mockImplementation(async (_url, options) =>
+    Response.json(
+      JSON.parse(options!.body as string).text
+        ? {
+            status: 'completed',
+            output: [
+              {
+                type: 'message',
+                role: 'assistant',
+                status: 'completed',
+                content: [{ type: 'output_text', text: '{"items":[]}' }],
+              },
+            ],
+          }
+        : providerResult(),
+    ),
+  )
 }
 
 describe('research input validation', () => {
@@ -107,7 +123,6 @@ describe('research input validation', () => {
     { ...input, symptoms: '' },
     { ...input, symptoms: 'x'.repeat(2001) },
     { ...input, brandModel: 'x'.repeat(121) },
-    { ...input, location: ' ' },
     { ...input, location: 'x'.repeat(121) },
     { ...input, service: 'x'.repeat(121) },
   ])('rejects invalid research input: %j', (value) => {
@@ -188,7 +203,7 @@ describe('research HTTP handler', () => {
     expect(fetcher).not.toHaveBeenCalled()
   })
 
-  it('executes one bounded web search request and returns cited information', async () => {
+  it('runs web research followed by a tool-free price extraction', async () => {
     const fetcher = successfulFetch()
     const handler = createResearchHandler({
       env: { REPAIR_AI_API_KEY: 'test-key' },
@@ -202,7 +217,7 @@ describe('research HTTP handler', () => {
     expect(result.status).toBe(200)
     expect(result.body).toMatchObject({ status: 'ok', checkedAt: '1970-01-01T00:00:00.000Z' })
     expect(result.headers['cache-control']).toBe('no-store')
-    expect(fetcher).toHaveBeenCalledTimes(1)
+    expect(fetcher).toHaveBeenCalledTimes(2)
     const [url, options] = fetcher.mock.calls[0]
     expect(url).toBe('https://api.openai.com/v1/responses')
     const sent = JSON.parse(options!.body as string)
@@ -224,6 +239,75 @@ describe('research HTTP handler', () => {
     expect(sent.input).toContain('Bengaluru')
     expect(sent.input).not.toContain('test-key')
     expect(result.rawBody).not.toContain('test-key')
+    expect(result.body.priceCheck).toEqual({ status: 'checked', items: [] })
+    const extraction = JSON.parse(fetcher.mock.calls[1][1]!.body as string)
+    expect(extraction.text.format.type).toBe('json_schema')
+    expect(extraction.tools).toBeUndefined()
+    expect(extraction.store).toBe(false)
+  })
+
+  it('researches without a city without inventing a local search area', async () => {
+    const fetcher = successfulFetch()
+    const result = await callHandler(
+      createResearchHandler({ env: { REPAIR_AI_API_KEY: 'test-key' }, fetcher }),
+      { preParsed: { ...input, location: '' } },
+    )
+    expect(result.status).toBe(200)
+    expect(JSON.parse(fetcher.mock.calls[0][1]!.body as string).tools[0]).not.toHaveProperty(
+      'user_location',
+    )
+  })
+
+  it('keeps the cited answer when price extraction is unavailable', async () => {
+    const fetcher = successfulFetch()
+      .mockResolvedValueOnce(Response.json(providerResult()))
+      .mockResolvedValueOnce(new Response('', { status: 503 }))
+    const result = await callHandler(
+      createResearchHandler({ env: { REPAIR_AI_API_KEY: 'test-key' }, fetcher }),
+    )
+    expect(result.status).toBe(200)
+    expect(result.body.priceCheck).toEqual({ status: 'unavailable', items: [] })
+    expect(result.body.text).toContain('external hose')
+  })
+
+  it('returns the sourced component price without a fabricated total', async () => {
+    const excerpt = 'Example washer 100 spare part: ₹500, parts-only, excluding labour.'
+    const extraction = {
+      items: [
+        {
+          kind: 'part',
+          low: 500,
+          high: 500,
+          currency: 'INR',
+          modelMatch: 'exact',
+          excerpt,
+          citationIndex: 0,
+        },
+      ],
+    }
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json(providerResult([citedPart(`${excerpt} [1]`)])))
+      .mockResolvedValueOnce(
+        Response.json({
+          status: 'completed',
+          output: [
+            {
+              type: 'message',
+              role: 'assistant',
+              status: 'completed',
+              content: [{ type: 'output_text', text: JSON.stringify(extraction) }],
+            },
+          ],
+        }),
+      )
+    const result = await callHandler(
+      createResearchHandler({ env: { REPAIR_AI_API_KEY: 'test-key' }, fetcher }),
+    )
+    expect(result.body.priceCheck).toMatchObject({
+      status: 'checked',
+      items: [{ kind: 'part', low: 500, high: 500 }],
+    })
   })
 
   it('can reuse an existing server key and configurable model', async () => {
@@ -358,7 +442,7 @@ describe('research HTTP handler', () => {
     const limited = await callHandler(handler)
     expect(limited.status).toBe(429)
     expect(limited.headers['retry-after']).toBe(60)
-    expect(fetcher).toHaveBeenCalledTimes(1)
+    expect(fetcher).toHaveBeenCalledTimes(2)
     timestamp += 60_000
     expect((await callHandler(handler)).status).toBe(200)
   })

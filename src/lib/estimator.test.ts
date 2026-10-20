@@ -102,6 +102,50 @@ describe('symptom-based estimates', () => {
     expect(result.fault).toContain('Several possible causes')
   })
 
+  it('uses the matching repair scenarios rather than the same general allowance', () => {
+    const result = estimate({ ...baseline, symptoms: 'Not draining and leaking water' })
+    expect(result.repairCost).toEqual({ low: 1000, high: 4000 })
+    expect(result.repairOptions).toHaveLength(2)
+    expect(result.repairCostBasis).toBe('multiple')
+    expect(result.matched).toBe(false)
+    expect(result.recommendation).toBe('inspect')
+  })
+
+  it.each([
+    ['Not draining', 1200, 3500],
+    ['Drum not spinning', 2000, 6500],
+    ['Leaking water', 1000, 4000],
+    ['Drum bearing is grinding', 2000, 8000],
+  ])('keeps repair costs specific to the washer issue: %s', (symptoms, low, high) => {
+    const result = estimate({ ...baseline, symptoms })
+    expect(result.repairCost).toEqual({ low, high })
+    expect(result.repairCostBasis).toBe('symptom')
+    expect(result.replacementCost).toBe(28000)
+    expect(result.replacementCostSource).toBe('category-default')
+    expect(result.recyclingValue).toEqual(estimate(baseline).recyclingValue)
+  })
+
+  it('does not mistake a battery that will not charge for battery wear', () => {
+    const result = estimate({
+      ...baseline,
+      appliance: 'laptop',
+      symptoms: 'My battery is not charging',
+    })
+    expect(result.fault).toContain('charging port')
+    expect(result.repairCost).toEqual({ low: 2000, high: 8000 })
+    expect(result.repairOptions).toHaveLength(1)
+  })
+
+  it('does not treat a mention of normal charging as a charging fault', () => {
+    const result = estimate({
+      ...baseline,
+      appliance: 'smartphone',
+      symptoms: 'Battery drains quickly even after charging',
+    })
+    expect(result.fault).toBe('Possible battery wear')
+    expect(result.repairCost).toEqual({ low: 1500, high: 4500 })
+  })
+
   it('keeps remaining life non-negative beyond the assumed lifespan', () => {
     const result = estimate({ ...baseline, age: 20 })
     expect(result.remainingYears).toBe(0)

@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { ArrowUpRight, BookOpen, ExternalLink, Info, LoaderCircle, Search } from 'lucide-react'
+import { ArrowUpRight, BookOpen, Info, LoaderCircle, Search } from 'lucide-react'
 import { parseResearchResult } from '../lib/research-client'
 import type { ResearchRequest, ResearchResult } from '../lib/research-types'
-import { buildWebSearchUrl } from '../lib/service-search'
+import { buildIssueSearchUrl } from '../lib/service-search'
+import ResearchAlternatives from './ResearchAlternatives'
+import PublishedPrices from './PublishedPrices'
 
 class ResearchError extends Error {}
 
@@ -22,18 +24,17 @@ export default function WebResearchPanel({ request }: { request: ResearchRequest
     return () => controller.current?.abort()
   }, [requestKey])
 
-  const ready = Boolean(request.location.trim() && request.service.trim())
+  const ready = Boolean(request.service.trim())
   let searchUrl: string | null = null
   try {
-    if (ready) searchUrl = buildWebSearchUrl(request.service, request.brandModel, request.location)
+    if (ready) searchUrl = buildIssueSearchUrl(request, 'google')
   } catch {
     /* Invalid search inputs are handled before a request. */
   }
 
   async function research() {
     if (!ready) {
-      setMessage('Enter your city or postcode in the nearby-services panel first.')
-      document.getElementById('location')?.focus()
+      setMessage('Enter the repair service in the nearby-services panel first.')
       return
     }
     if (!searchUrl) {
@@ -99,8 +100,11 @@ export default function WebResearchPanel({ request }: { request: ResearchRequest
           <BookOpen size={18} />
         </span>
         <div>
-          <h4 id="web-research-title">What does the web say?</h4>
-          <p>Look for repair guidance and published prices for this service.</p>
+          <h4 id="web-research-title">Research the fix and check prices</h4>
+          <p>
+            A short answer for your issue, safe next steps, and prices checked against cited
+            sources.
+          </p>
         </div>
       </div>
       <p className="research-scope">
@@ -119,7 +123,7 @@ export default function WebResearchPanel({ request }: { request: ResearchRequest
             <Search size={16} />
           )}
           {status === 'loading'
-            ? 'Checking published information…'
+            ? 'Checking sources and prices…'
             : result
               ? 'Refresh web research'
               : 'Research this repair'}
@@ -132,7 +136,8 @@ export default function WebResearchPanel({ request }: { request: ResearchRequest
       </p>
       {status === 'loading' && (
         <p className="research-status" role="status">
-          Searching for relevant sources. This may take a little while.
+          Searching published information, then checking price amounts and categories against the
+          cited answer.
         </p>
       )}
       {message && (
@@ -153,6 +158,7 @@ export default function WebResearchPanel({ request }: { request: ResearchRequest
               })}
             </time>
           </div>
+          <PublishedPrices result={result} />
           <CitedAnswer result={result} />
           <p className="research-price-note">
             Published prices may be conditional or out of date. Confirm the model, parts, labor,
@@ -161,15 +167,7 @@ export default function WebResearchPanel({ request }: { request: ResearchRequest
           </p>
         </div>
       )}
-      {searchUrl ? (
-        <a className="direct-search" href={searchUrl} target="_blank" rel="noreferrer">
-          Search the web yourself <ExternalLink size={13} />
-        </a>
-      ) : (
-        <p className="research-location-hint">
-          Add a city or postcode in the nearby-services panel to research local information.
-        </p>
-      )}
+      <ResearchAlternatives request={request} />
     </section>
   )
 }

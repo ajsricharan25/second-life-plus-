@@ -22,4 +22,19 @@ export interface ResearchResult {
   text: string
   citations: ResearchCitation[]
   checkedAt: string
+  priceCheck?: {
+    status: 'checked' | 'unavailable'
+    items: PublishedPrice[]
+  }
+}
+
+export interface PublishedPrice {
+  kind: 'part' | 'labor' | 'total-repair' | 'replacement'
+  low: number
+  high: number
+  currency: Currency
+  modelMatch: 'exact' | 'general'
+  excerpt: string
+  sourceUrl: string
+  sourceTitle: string
 }

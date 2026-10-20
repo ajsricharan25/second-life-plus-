@@ -33,7 +33,7 @@ test('example gives an actionable estimate with repair and material details', as
   await expect(
     page.getByText('Possible drain filter blockage or pump fault', { exact: true }),
   ).toBeVisible()
-  await expect(page.getByText('Estimated repair', { exact: true })).toBeVisible()
+  await expect(page.getByText('Unverified repair allowance', { exact: true })).toBeVisible()
   await expect(page.getByText('₹1,200', { exact: false })).toBeVisible()
 
   await page.getByRole('button', { name: 'Repair guidance', exact: true }).click()
@@ -162,7 +162,7 @@ test('download contains the displayed estimate, guidance, and assumptions', asyn
   expect(path).toBeTruthy()
   const report = await readFile(path!, 'utf8')
   expect(report).toContain('Device: Washing machine')
-  expect(report).toContain('Repair estimate: ₹1,200–₹3,500')
+  expect(report).toContain('Unverified repair allowance: ₹1,200–₹3,500')
   expect(report).toContain('Check the external drain hose')
   expect(report).toContain('MATERIAL ASSUMPTIONS')
   expect(report).toContain('Photos are for reference and are not analyzed.')

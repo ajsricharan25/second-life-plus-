@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import { appliances, estimate } from './estimator'
 import type { ApplianceId, AssessmentInput } from './estimator'
-import { buildMapsSearchUrl, buildWebSearchUrl, getSuggestedService } from './service-search'
+import {
+  buildMapsSearchUrl,
+  buildWebSearchUrl,
+  getSuggestedService,
+  buildIssueSearchUrl,
+  buildCompanionPrompt,
+  buildReplacementSearchUrl,
+} from './service-search'
 
 const washer: AssessmentInput = {
   appliance: 'washing-machine',
@@ -99,6 +106,42 @@ describe('component-specific service suggestions', () => {
 })
 
 describe('search URLs', () => {
+  const research = {
+    ...washer,
+    brandModel: 'Bosch WAN24209IN',
+    location: '',
+    service: 'washing machine drain pump repair',
+  }
+
+  it.each(['google', 'bing'] as const)(
+    'offers %s searches including the actual issue without requiring a city',
+    (provider) => {
+      const url = new URL(buildIssueSearchUrl(research, provider))
+      expect(url.hostname).toBe(provider === 'google' ? 'www.google.com' : 'www.bing.com')
+      expect(url.searchParams.get('q')).toContain(research.symptoms)
+      expect(url.searchParams.get('q')).toContain('Bosch WAN24209IN')
+    },
+  )
+
+  it('prepares a concise, source-seeking AI question without pretending the photo was analyzed', () => {
+    const prompt = buildCompanionPrompt(research)
+    expect(prompt).toContain(research.symptoms)
+    expect(prompt).toContain('150 words or fewer')
+    expect(prompt).toContain('whole-device replacement')
+    expect(prompt).toContain('Do not invent quotes')
+    expect(prompt).toContain('safe external checks')
+  })
+
+  it('prioritizes hazardous symptoms in companion prompts', () => {
+    expect(buildCompanionPrompt({ ...research, symptoms: 'Smoke from the washer' })).toContain(
+      'Do not suggest tests',
+    )
+  })
+
+  it('searches replacement-device prices separately from component repairs', () => {
+    const url = new URL(buildReplacementSearchUrl('washing-machine', 'Bosch WAN24209IN', 'INR'))
+    expect(url.searchParams.get('q')).toBe('Bosch WAN24209IN new replacement retail price INR')
+  })
   it('normalizes whitespace without discarding Unicode or punctuation', () => {
     const url = new URL(buildMapsSearchUrl('  screen\t repair & replacement ', '  Montréal\n QC  '))
     expect(url.searchParams.get('query')).toBe('screen repair & replacement in Montréal QC')

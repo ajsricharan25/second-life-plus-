@@ -29,6 +29,9 @@ npm ci --cache /workspace/.npm-cache
 - Hazard detection for symptoms such as smoke, sparks, swollen batteries, and exposed wiring. These cases recommend professional handling instead of routine troubleshooting.
 - Component-specific Google Maps searches using the user's city or postcode, such as “washing machine drain pump repair in Bengaluru.” Users can edit the service before searching.
 - Optional web research for published repair guidance and pricing, with inline source links and a checked date. Brand/model and location help make the search relevant.
+- A short “What to do now” solution for the reported fault, visible before the cost comparison.
+- An internal source-backed price check that separates component-only prices, labour/diagnostic fees, total repairs, and new-device prices. A cited ₹500 part remains ₹500; it is not inflated into an invented total repair quote.
+- Google and Bing searches based on the actual symptoms and model, plus a prepared question to copy into ChatGPT or Perplexity. These alternatives need no app API key; external services have their own access requirements.
 - Up to 30 saved estimates in browser storage, reopening/deletion, and downloadable text reports.
 - Mobile navigation, keyboard-accessible controls, and bundled fonts.
 
@@ -38,19 +41,25 @@ This first version uses deterministic symptom matching, **not AI image diagnosis
 
 Prices, material weights, recovery rates, and expected service life are **illustrative planning assumptions**, not live data. INR and USD use independent price profiles, not an exchange-rate conversion. Recycling ranges apply recovery assumptions to estimated material value; collection and processing fees can reduce a payout to zero. Batteries and refrigerant recovery are excluded from the material calculation.
 
+The repair card explicitly labels its value an **unverified repair allowance**. Single matching faults use their own cost assumptions; multiple matches show the range of the relevant alternatives instead of the same generic category allowance. A whole-device replacement budget is separate from a component price. Its default depends on the appliance category, not the symptom; enter the current price of an equivalent new model to improve that comparison. Scrap value also stays similar across faults because it is based on device materials.
+
 Shop search opens Google Maps. There is no verified shop directory, availability feed, or live quote integration. Users contact businesses themselves. Unknown or conflicting symptoms produce an inspection recommendation; an exact model, professional diagnosis, and written quote are needed before a decision.
 
-Web research is separate from the illustrative repair/recycling calculation. It does not overwrite the numerical comparison. A published price can be conditional, parts-only, geographically different, or outdated; confirm the model and full price with a repairer. Research answers are currently kept only while viewing the assessment and are not included in saved estimates or text downloads. Changing the service, device details, or location clears the previous web answer.
+Web research is separate from the illustrative repair/recycling calculation. It does not overwrite the numerical comparison or turn a component price into a full repair bill. A published price can be conditional, parts-only, geographically different, or outdated; confirm the model and full price with a repairer. Research answers are currently kept only while viewing the assessment and are not included in saved estimates or text downloads. Changing the service, device details, or location clears the previous web answer.
 
 ## Enable web research
 
-The server calls OpenAI's Responses API with its web-search tool. The only tool available to the model is web search. Photos are not sent. Research runs only when the user selects **Research this repair**, after the app explains which details will be sent.
+The server calls OpenAI's Responses API with its web-search tool, then makes one tool-free structured extraction call to check prices against the cited answer. No autonomous agent loop runs. Photos are not sent. Research runs only when the user selects **Research this repair**, after the app explains which details will be sent. A city is optional for research; Maps still requires a location.
 
 1. Configure `REPAIR_AI_API_KEY` securely in the server environment. For local development, copy `.env.example` to `.env.local` and supply your key there. Never commit the key or use a `VITE_` prefix, which would expose it to the browser.
 2. Optionally set `REPAIR_AI_MODEL` to a model supporting Responses API web search; the default is `gpt-4.1`.
 3. Restart Vite locally, or redeploy after adding the variable in Vercel's project environment settings. Existing server-side `OPENAI_API_KEY` bindings are also supported.
 
-`POST /api/research` accepts bounded device details, symptoms, brand/model, repair service, and location. The server requires a completed web search and usable HTTPS source citations before returning an answer. Requests have body-size and time limits; errors are sanitized and secrets never enter the client bundle. Missing credentials return `503 not_configured`; the UI offers a direct web-search link instead of fabricating an answer. Provider/API usage is billed to the configured account.
+`POST /api/research` accepts bounded device details, symptoms, brand/model, repair service, and optional location. The server requires a completed web search and usable HTTPS source citations before returning an answer. The answer is requested in at most 180 words: a summary, safe steps, published prices, and a next action. Price extraction checks exact quoted amounts/ranges, currency, price category, a verbatim passage, and its adjacent citation. Unsupported amounts are discarded. Model-specific labels additionally require the submitted model to appear in the passage. If extraction fails, the cited answer remains available with “Quote needed”.
+
+This verifies support **within the cited web-search answer**, not the truth of every page, a shop's stock, or a final payable quote. The app does not fetch arbitrary source pages or promise live quote accuracy. Open the linked evidence and confirm the complete price with the provider.
+
+Requests have body-size and time limits; errors are sanitized and secrets never enter the client bundle. Missing credentials return `503 not_configured`; the UI offers direct searches and AI companion prompts instead of fabricating an answer. Each successful research request can make two model calls, billed to the configured account.
 
 The built-in six-requests-per-minute burst guard is **process-local**, so it is not a distributed quota across Vercel instances. Configure Vercel Firewall rate limiting or equivalent deployment protection and provider spending limits before enabling the paid endpoint publicly. Same-origin validation is an additional browser check, not authentication.
 
@@ -97,7 +106,7 @@ The repository contains a `vercel.json` configuration for the Vite frontend plus
 | Build     | `npm run build` |
 | Output    | `dist`          |
 
-Once these changes are pushed to GitHub, import the repository into a Vercel project and deploy. Set `REPAIR_AI_API_KEY` in the project environment settings to enable web research; otherwise the estimator, manual web search, and targeted Maps searches remain available. The research function allows up to 60 seconds; its provider request timeout is 25 seconds. Development and saved estimates are independent of a Vercel account. A local production build does not publish the app.
+Once these changes are pushed to GitHub, import the repository into a Vercel project and deploy. Set `REPAIR_AI_API_KEY` in the project environment settings to enable web research and price checking; otherwise the estimator, manual searches, companion prompts, and targeted Maps searches remain available. The research function allows up to 60 seconds; its combined provider timeout is 45 seconds. Development and saved estimates are independent of a Vercel account. A local production build does not publish the app.
 
 ## Project structure
 

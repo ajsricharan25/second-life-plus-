@@ -25,7 +25,7 @@ async function openEstimate(page: Page) {
   )
 }
 
-test('research requires a location and offers direct search when the provider is not configured', async ({
+test('research and alternatives work without a location and offer a fallback without an API key', async ({
   page,
 }) => {
   let requests = 0
@@ -34,22 +34,121 @@ test('research requires a location and offers direct search when the provider is
     return route.fulfill({ status: 503, json: { error: { code: 'not_configured' } } })
   })
   await openEstimate(page)
-  await page.getByRole('button', { name: 'Research this repair' }).click()
-  await expect(
-    page.getByText('Enter your city or postcode in the nearby-services panel first.'),
-  ).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Search Google' })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Search Bing' })).toBeVisible()
   expect(requests).toBe(0)
-  await page.getByLabel('City or postcode').fill('Bengaluru 560001')
   await page.getByRole('button', { name: 'Research this repair' }).click()
   await expect(page.getByText(/Web research isn’t enabled yet/)).toBeVisible()
   expect(requests).toBe(1)
-  const link = page.getByRole('link', { name: 'Search the web yourself' })
+  await page.getByLabel('City or postcode').fill('Bengaluru 560001')
+  await page.getByRole('button', { name: 'Research this repair' }).click()
+  await expect(page.getByText(/Web research isn’t enabled yet/)).toBeVisible()
+  expect(requests).toBe(2)
+  const link = page.getByRole('link', { name: 'Search Google' })
   const url = new URL((await link.getAttribute('href'))!)
-  expect(url.searchParams.get('q')).toBe(
-    'washing machine drain pump repair cost guidance in Bengaluru 560001',
-  )
+  expect(url.searchParams.get('q')).toContain('The washing machine won’t drain.')
+  expect(url.searchParams.get('q')).toContain('Bengaluru 560001')
   await expect(page.getByText('WEB-SOURCED INFORMATION')).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Find repair shops' })).toBeEnabled()
+})
+
+test('shows a sourced ₹500 part price separately from the unverified full-repair allowance', async ({
+  page,
+}) => {
+  const excerpt = 'Example Washer 100 spare part: ₹500, parts-only, excluding labour.'
+  const text = `${excerpt} [source]`
+  const source = researchFixture.citations[0]
+  await page.route('**/api/research', (route) =>
+    route.fulfill({
+      status: 200,
+      json: {
+        ...researchFixture,
+        text,
+        citations: [{ ...source, start: text.indexOf('[source]'), end: text.length }],
+        priceCheck: {
+          status: 'checked',
+          items: [
+            {
+              kind: 'part',
+              low: 500,
+              high: 500,
+              currency: 'INR',
+              modelMatch: 'exact',
+              excerpt,
+              sourceUrl: source.url,
+              sourceTitle: source.title,
+            },
+          ],
+        },
+      },
+    }),
+  )
+  await openEstimate(page)
+  await page.getByRole('button', { name: 'Research this repair' }).click()
+  const check = page.getByRole('region', { name: 'Source-backed price check' })
+  await expect(check.getByText('₹500', { exact: true })).toBeVisible()
+  await expect(check.getByText('Component / spare part only')).toBeVisible()
+  await expect(check.getByText(/Full repair quote needed/)).toBeVisible()
+  await check.getByText('See the price evidence').click()
+  await expect(check.getByRole('link')).toHaveAttribute('href', source.url)
+  await expect(page.getByText('Unverified repair allowance')).toBeVisible()
+  expect(
+    (await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze()).violations,
+  ).toEqual([])
+})
+
+test('AI companion question can be copied manually without invoking the API', async ({ page }) => {
+  let requests = 0
+  await page.route('**/api/research', (route) => {
+    requests++
+    return route.abort()
+  })
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'clipboard', {
+      value: {
+        writeText: async () => {
+          throw new Error('Clipboard disabled')
+        },
+      },
+    })
+  })
+  await openEstimate(page)
+  await page.getByText('Ask an AI search companion', { exact: true }).click()
+  await page.getByRole('button', { name: 'Copy repair question' }).click()
+  await expect(page.getByText(/Select and copy the question below/)).toBeVisible()
+  await expect(page.getByLabel('Repair question to copy')).toHaveValue(
+    /The washing machine won’t drain/,
+  )
+  await expect(page.getByRole('link', { name: 'Open ChatGPT' })).toHaveAttribute(
+    'href',
+    'https://chatgpt.com/',
+  )
+  await expect(page.getByRole('link', { name: 'Open Perplexity' })).toHaveAttribute(
+    'href',
+    'https://www.perplexity.ai/',
+  )
+  expect(requests).toBe(0)
+})
+
+test('changing washer symptoms changes repair costs while the whole-device budget remains independent', async ({
+  page,
+}) => {
+  await openEstimate(page)
+  await expect(page.locator('.repair-cost')).toContainText('₹1,200')
+  await expect(page.locator('.replacement-line')).toContainText('₹28,000')
+  await expect(page.getByRole('region', { name: 'What to do now' })).toContainText(
+    'Check the external drain hose',
+  )
+  await page.getByRole('button', { name: 'Edit details' }).click()
+  await page.getByLabel('What seems to be the problem?').fill('Drum bearing is grinding')
+  await page.getByLabel('Replacement budget', { exact: false }).fill('42000')
+  await page.getByRole('button', { name: 'Explore my options' }).click()
+  await expect(page.locator('.repair-cost')).toContainText('₹2,000')
+  await expect(page.locator('.repair-cost')).toContainText('₹8,000')
+  await expect(page.locator('.replacement-line')).toContainText('₹42,000')
+  await expect(page.getByRole('region', { name: 'What to do now' })).toContainText(
+    'Check stability',
+  )
 })
 
 test('web research displays attributed sources, retains them between tabs, and clears them when scope changes', async ({

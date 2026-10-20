@@ -18,7 +18,10 @@ export interface Assessment {
   explanation: string
   summary: string
   repairCost: { low: number; high: number }
+  repairCostBasis: 'symptom' | 'multiple' | 'unknown' | 'safety'
+  repairOptions: { fault: string; low: number; high: number }[]
   replacementCost: number
+  replacementCostSource: 'entered' | 'category-default'
   recyclingValue: { low: number; high: number }
   materials: { name: string; weightKg: number; value: number }[]
   guide: { title: string; description: string }[]
@@ -123,6 +126,13 @@ interface ApplianceProfile {
   warning?: string
 }
 
+// A mention of a battery, screen, or charging is not itself a failure.
+// In particular, "battery not charging" must not also imply battery wear.
+const batteryWearPattern =
+  /battery.{0,35}(?:drain|dies|dying|wear|worn|weak|degrad|health|capacity|last|replace)|(?:drain|worn|weak|replace).{0,25}battery|drain.*(?:quick|fast)|short.*charge/i
+const chargingFailurePattern =
+  /(?:not|won'?t|doesn'?t|isn'?t|stopped|no longer)\s+charg|charg(?:e|ing|er|ing\s+port).{0,25}(?:fail|broken|loose|intermittent|damag|problem|issue)|(?:broken|damaged|loose)\s+(?:charger|charging\s+port)|(?:not|won'?t|doesn'?t)\s+(?:turn|power)|dead|no\s+power/i
+
 const profiles: Record<ApplianceId, ApplianceProfile> = {
   'washing-machine': {
     lifespan: 10,
@@ -132,7 +142,7 @@ const profiles: Record<ApplianceId, ApplianceProfile> = {
     faults: [
       {
         pattern:
-          /(?:not|won'?t|doesn'?t|isn'?t)\s+drain|drain(?:ing)?\s+(?:issue|problem)|water\s+(?:stuck|left|remain)|blocked?\s+(?:filter|drain)/i,
+          /(?:not|won'?t|doesn'?t|isn'?t)\s+drain|drain(?:ing)?\s+(?:issue|problem)|drain\s+pump|water\s+(?:stuck|left|remain)|blocked?\s+(?:filter|drain)/i,
         fault: 'Possible drain filter blockage or pump fault',
         cost: { INR: [1200, 3500], USD: [90, 180] },
         check: {
@@ -143,7 +153,7 @@ const profiles: Record<ApplianceId, ApplianceProfile> = {
       },
       {
         pattern:
-          /(?:not|won'?t|doesn'?t|isn'?t)\s+spin|drum.*(?:stuck|stop)|spin.*(?:fail|problem)/i,
+          /(?:not|won'?t|doesn'?t|isn'?t)\s+spin|drum.*(?:stuck|stop)|spin.*(?:fail|problem)|drive\s+belt|motor.{0,20}(?:fail|broken|not\s+working)/i,
         fault: 'Possible load imbalance, drive belt, or motor fault',
         cost: { INR: [2000, 6500], USD: [120, 260] },
         check: {
@@ -163,7 +173,7 @@ const profiles: Record<ApplianceId, ApplianceProfile> = {
         },
       },
       {
-        pattern: /noise|noisy|rattl|grind|bang|vibrat/i,
+        pattern: /noise|noisy|rattl|grind|bang|vibrat|bearing/i,
         fault: 'Possible imbalance or drum bearing wear',
         cost: { INR: [2000, 8000], USD: [100, 300] },
         check: {
@@ -231,7 +241,7 @@ const profiles: Record<ApplianceId, ApplianceProfile> = {
     materials: { Aluminium: 0.5, Copper: 0.08, 'Circuit boards': 0.25, Plastic: 0.4 },
     faults: [
       {
-        pattern: /battery|drain.*(?:quick|fast)|short.*charge/i,
+        pattern: batteryWearPattern,
         fault: 'Possible battery wear',
         cost: { INR: [2500, 6500], USD: [70, 160] },
         check: {
@@ -241,7 +251,8 @@ const profiles: Record<ApplianceId, ApplianceProfile> = {
         },
       },
       {
-        pattern: /screen|display|crack/i,
+        pattern:
+          /crack|shatter|(?:screen|display).{0,25}(?:flicker|line|black|blank|dim|damage)|(?:black|blank|flickering|broken).{0,10}(?:screen|display)/i,
         fault: 'Possible display panel or display connection damage',
         cost: { INR: [5000, 14000], USD: [140, 320] },
         check: {
@@ -261,7 +272,7 @@ const profiles: Record<ApplianceId, ApplianceProfile> = {
         },
       },
       {
-        pattern: /charg|(?:not|won'?t|doesn'?t)\s+(?:turn|power)|dead|no\s+power/i,
+        pattern: chargingFailurePattern,
         fault: 'Possible charger, charging port, or power-circuit fault',
         cost: { INR: [2000, 8000], USD: [80, 220] },
         check: {
@@ -279,7 +290,7 @@ const profiles: Record<ApplianceId, ApplianceProfile> = {
     materials: { Aluminium: 0.025, Copper: 0.015, 'Circuit boards': 0.04, Plastic: 0.025 },
     faults: [
       {
-        pattern: /battery|drain.*(?:quick|fast)|short.*charge/i,
+        pattern: batteryWearPattern,
         fault: 'Possible battery wear',
         cost: { INR: [1500, 4500], USD: [50, 110] },
         check: {
@@ -289,7 +300,8 @@ const profiles: Record<ApplianceId, ApplianceProfile> = {
         },
       },
       {
-        pattern: /screen|display|crack|touch/i,
+        pattern:
+          /crack|shatter|(?:screen|display).{0,25}(?:flicker|line|black|blank|dim|damage)|(?:black|blank|flickering|broken).{0,10}(?:screen|display)|touch.{0,20}(?:not|fail|unresponsive)/i,
         fault: 'Possible display or touch-panel damage',
         cost: { INR: [3000, 12000], USD: [90, 280] },
         check: {
@@ -299,7 +311,7 @@ const profiles: Record<ApplianceId, ApplianceProfile> = {
         },
       },
       {
-        pattern: /charg|(?:not|won'?t|doesn'?t)\s+(?:turn|power)|dead|no\s+power/i,
+        pattern: chargingFailurePattern,
         fault: 'Possible cable, charging port, or power-circuit fault',
         cost: { INR: [1000, 4500], USD: [50, 130] },
         check: {
@@ -490,12 +502,25 @@ export function estimate(input: unknown): Assessment {
   const matches = profile.faults.filter((candidate) => candidate.pattern.test(symptoms))
   const fault = matches[0]
   const multipleFaults = matches.length > 1
-  const matched = !hazard && Boolean(fault)
+  const matched = !hazard && Boolean(fault) && !multipleFaults
   // The age adjustment is deliberately bounded; it is a planning assumption,
   // not a prediction of failure or the useful life of an individual appliance.
   const remainingYears = Math.max(0, rounded(profile.lifespan - age))
-  const cost =
-    !hazard && fault && !multipleFaults ? fault.cost[currency] : profile.generalCost[currency]
+  const repairOptions = hazard
+    ? []
+    : matches.map((candidate) => ({
+        fault: candidate.fault,
+        low: candidate.cost[currency][0],
+        high: candidate.cost[currency][1],
+      }))
+  // Several matching causes are alternatives, not a diagnosis or an additive quote.
+  // Keep their own ranges instead of reverting every combination to the same allowance.
+  const cost: Cost = repairOptions.length
+    ? [
+        Math.min(...repairOptions.map((option) => option.low)),
+        Math.max(...repairOptions.map((option) => option.high)),
+      ]
+    : profile.generalCost[currency]
   const [low, high] = cost
   const midpoint = (low + high) / 2
   const repairFraction = midpoint / replacementCost
@@ -533,7 +558,7 @@ export function estimate(input: unknown): Assessment {
       'These symptoms do not match a supported fault pattern. A technician should diagnose the appliance; the repair range is a broad planning allowance, not a diagnosis.'
   } else if (multipleFaults) {
     explanation =
-      'Your description matches more than one possible issue. A technician should determine whether these symptoms share a cause before quoting a repair. The displayed repair range is a broad planning allowance.'
+      'Your description matches more than one possible issue. The range spans the matching repair scenarios; it is not their combined cost. A technician should determine whether these symptoms share a cause before quoting a repair.'
   } else {
     explanation = `Your symptoms suggest ${fault.fault.replace(/^Possible /, '').toLowerCase()}, which needs confirmation. The midpoint repair estimate is ${Math.round(repairFraction * 100)}% of the replacement price. `
     explanation +=
@@ -601,9 +626,24 @@ export function estimate(input: unknown): Assessment {
         ? 'Several possible causes need inspection'
         : (fault?.fault ?? 'The cause needs a technician’s diagnosis'),
     explanation: `${explanation} ${assumptions}`,
-    summary: explanation,
+    summary: hazard
+      ? 'Stop using the device and arrange professional handling. A safe inspection comes before a cost comparison.'
+      : !fault
+        ? 'The cause is unclear. Record the model and any error code, then request a diagnosis before paying for parts.'
+        : multipleFaults
+          ? 'More than one cause fits. Compare the possible repairs below and get a diagnosis before replacing a component.'
+          : `The repair range is about ${Math.round((low / replacementCost) * 100)}–${Math.round((high / replacementCost) * 100)}% of the whole-device replacement budget. ${recommendation === 'repair' ? 'Try the safe check below, then confirm a repair quote.' : 'Confirm the fault and a full repair quote before deciding to replace the device.'}`,
     repairCost: { low, high },
+    repairCostBasis: hazard
+      ? 'safety'
+      : !fault
+        ? 'unknown'
+        : multipleFaults
+          ? 'multiple'
+          : 'symptom',
+    repairOptions,
     replacementCost,
+    replacementCostSource: data.replacementCost === undefined ? 'category-default' : 'entered',
     recyclingValue,
     materials,
     guide,
