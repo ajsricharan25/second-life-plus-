@@ -1,102 +1,67 @@
-# Second Life — Repair vs. Recycle Estimator
+# Second Life — AI Repair vs. Recycle Assistant
 
-A responsive web app that helps people decide what to do with broken electronics. Describe the symptoms, compare indicative repair costs with material recycling value, and take a practical next step.
+Describe a broken appliance, optionally share a photo, and get a web-sourced assessment from **Google Gemini or OpenAI**. The app explains likely causes, safe checks, repair options, and repair-versus-replacement trade-offs. A separate calculator compares supported prices without inventing missing charges.
 
 ## Run locally
 
-Requires Node.js 24 and npm. The local estimator and component-specific Maps searches work without an API key, database, or account. Web answers require the server-side AI key described below.
+Requires Node.js 24 and npm:
 
 ```sh
 npm ci
+cp .env.example .env.local
+# Set one provider's server-side key in .env.local, then:
 npm run dev
 ```
 
-Vite serves the app on port 5173. Run `npm run build` to create the production files in `dist`, then `npm run preview` to serve that build on port 4173.
+Vite serves the app and `/api/research` on port 5173. `npm run build` produces `dist`; `npm run preview` serves the production frontend and local API middleware on port 4173. In a cloud environment with a read-only home directory, use `npm ci --cache /workspace/.npm-cache`.
 
-In a cloud sandbox with a read-only home directory, use a writable npm cache:
+The offline estimator, Google/Bing searches, AI companion prompt, and component-specific Maps searches also work without an app API key. Missing credentials show a clear unavailable message when AI analysis is requested.
 
-```sh
-npm ci --cache /workspace/.npm-cache
-```
+## Connect Gemini or OpenAI
 
-## What works
+Set these variables in `.env.local` for development or **Vercel → Project → Settings → Environment Variables** for deployment. Keys stay on the server: never commit them, put them in a `VITE_` variable, or paste them into the app.
 
-- Six device categories: washing machines, refrigerators, laptops, smartphones, televisions, and microwaves.
-- Photo selection, drag-and-drop, preview, replacement, and removal. JPEG, PNG, and WebP files are decoded and validated, with an 8 MB limit.
-- Symptom suggestions and free-text entry, device age, optional replacement budget, and INR or USD estimates.
-- Symptom-based possible causes and repair, recycle, or professional-inspection recommendations.
-- Indicative parts/labor ranges, material recovery breakdowns, and safe external checks.
-- Hazard detection for symptoms such as smoke, sparks, swollen batteries, and exposed wiring. These cases recommend professional handling instead of routine troubleshooting.
-- Component-specific Google Maps searches using the user's city or postcode, such as “washing machine drain pump repair in Bengaluru.” Users can edit the service before searching.
-- Optional web research for published repair guidance and pricing, with inline source links and a checked date. Brand/model and location help make the search relevant.
-- A short “What to do now” solution for the reported fault, visible before the cost comparison.
-- An internal source-backed price check that separates component-only prices, labour/diagnostic fees, total repairs, and new-device prices. A cited ₹500 part remains ₹500; it is not inflated into an invented total repair quote.
-- Google and Bing searches based on the actual symptoms and model, plus a prepared question to copy into ChatGPT or Perplexity. These alternatives need no app API key; external services have their own access requirements.
-- Up to 30 saved estimates in browser storage, reopening/deletion, and downloadable text reports.
-- Mobile navigation, keyboard-accessible controls, and bundled fonts.
+| Provider      | Required variables                                       | Optional model                  |
+| ------------- | -------------------------------------------------------- | ------------------------------- |
+| Google Gemini | `REPAIR_AI_PROVIDER=gemini`, `GEMINI_API_KEY=<your key>` | `GEMINI_MODEL=gemini-3.8-flash` |
+| OpenAI        | `REPAIR_AI_PROVIDER=openai`, `OPENAI_API_KEY=<your key>` | `REPAIR_AI_MODEL=gpt-4.1`       |
 
-## Current boundaries
+An existing `REPAIR_AI_API_KEY` is also accepted as an OpenAI key and takes precedence over `OPENAI_API_KEY`. If the provider is omitted, an OpenAI key selects OpenAI; otherwise a Gemini key selects Gemini. Explicit selection is recommended when both keys exist. Failure never silently sends the request to the other provider.
 
-This first version uses deterministic symptom matching, **not AI image diagnosis**. Photos stay in browser memory for reference, are never sent to a server, and are not retained in saved estimates or reports. Saved symptom descriptions remain in this browser's local storage until deleted or browser data is cleared.
+Use a model available to your account that supports images, its provider's web search, and structured output. Gemini uses the native `generateContent` API with Google Search grounding; OpenAI uses the Responses API with `web_search`. Both integrations use two bounded calls:
 
-Prices, material weights, recovery rates, and expected service life are **illustrative planning assumptions**, not live data. INR and USD use independent price profiles, not an exchange-rate conversion. Recycling ranges apply recovery assumptions to estimated material value; collection and processing fees can reduce a payout to zero. Batteries and refrigerant recovery are excluded from the material calculation.
+1. Research symptoms, optional photo, manufacturer guidance, repair prices, and replacement prices. Return a 350–550 word assessment with source citations.
+2. Extract prices from that cited answer into a strict schema, with no tools and no photo. Code validates amounts, currencies, price categories, quoted evidence, and citation proximity before displaying them.
 
-The repair card explicitly labels its value an **unverified repair allowance**. Single matching faults use their own cost assumptions; multiple matches show the range of the relevant alternatives instead of the same generic category allowance. A whole-device replacement budget is separate from a component price. Its default depends on the appliance category, not the symptom; enter the current price of an equivalent new model to improve that comparison. Scrap value also stays similar across faults because it is based on device materials.
+The server requires a completed answer and usable web-search evidence. It does not turn an uncited model answer into a sourced diagnosis. If price extraction fails, the cited assessment remains available and the calculator reports the missing prices.
 
-Shop search opens Google Maps. There is no verified shop directory, availability feed, or live quote integration. Users contact businesses themselves. Unknown or conflicting symptoms produce an inspection recommendation; an exact model, professional diagnosis, and written quote are needed before a decision.
+Official references: [OpenAI web search](https://platform.openai.com/docs/guides/tools-web-search), [Gemini Google Search grounding](https://ai.google.dev/gemini-api/docs/google-search), [Gemini structured output](https://ai.google.dev/gemini-api/docs/structured-output), and [Google's grounding examples](https://github.com/google-gemini/cookbook/blob/main/quickstarts/Grounding.ipynb).
 
-Web research is separate from the illustrative repair/recycling calculation. It does not overwrite the numerical comparison or turn a component price into a full repair bill. A published price can be conditional, parts-only, geographically different, or outdated; confirm the model and full price with a repairer. Research answers are currently kept only while viewing the assessment and are not included in saved estimates or text downloads. Changing the service, device details, or location clears the previous web answer.
+## User flow
 
-## Enable web research
+- Choose one of six device categories: washer, refrigerator, laptop, smartphone, TV, or microwave. Enter symptoms, age, and optionally brand/model and a replacement budget in INR or USD.
+- **Analyze with AI** starts the assessment. It covers a direct summary, ranked likely causes, safe checks and what their results mean, repair options and prices, repair versus replacement, and up to two questions to narrow the issue down.
+- Photos are optional and require an unchecked-by-default **Include this photo in AI analysis** consent box. The browser decodes JPEG/PNG/WebP uploads up to 8 MB, resizes to at most 1280 pixels, removes EXIF through re-encoding, and sends a JPEG no larger than 1 MB. Without consent, no photo is sent.
+- Published prices appear as **component only**, **labour/diagnostic fee**, **total repair**, or **new whole-device replacement**, with source links and quoted evidence.
+- The calculator uses a cited total repair and a cited replacement price, or the user's explicitly entered new-device budget. It computes the percentage range in code, prioritizes prices naming the submitted model, and never mixes currencies or adds unrelated parts and labour listings.
+- A ₹500 component stays ₹500. If labour or a complete repair price is missing, the app says what is missing instead of inventing a ₹1,500 bill. General examples remain labelled as such.
+- Google Maps searches use an editable component-specific service and city/postcode. There is no live shop quote or booking integration.
+- **Download** includes the current AI answer, provider, check time, citations, and clearly labelled offline estimates. **Save** stores up to 30 sets of device details in this browser; it does not retain photos or AI answers. Reopening saved details does not automatically make a paid request.
+- Editing the research service or location clears stale AI results and requires a new research action. Google/Bing searches and a detailed question to copy into ChatGPT or Perplexity remain available.
 
-The server calls OpenAI's Responses API with its web-search tool, then makes one tool-free structured extraction call to check prices against the cited answer. No autonomous agent loop runs. Photos are not sent. Research runs only when the user selects **Research this repair**, after the app explains which details will be sent. A city is optional for research; Maps still requires a location.
+## Prices and uncertainty
 
-1. Configure `REPAIR_AI_API_KEY` securely in the server environment. For local development, copy `.env.example` to `.env.local` and supply your key there. Never commit the key or use a `VITE_` prefix, which would expose it to the browser.
-2. Optionally set `REPAIR_AI_MODEL` to a model supporting Responses API web search; the default is `gpt-4.1`.
-3. Restart Vite locally, or redeploy after adding the variable in Vercel's project environment settings. Existing server-side `OPENAI_API_KEY` bindings are also supported.
+AI can suggest plausible causes from symptoms and visible evidence; it cannot confirm an internal component failure from an exterior photo. The assessment should give useful checks and remedies, while identifying the particular tests or hazardous internal work that need professional handling. Known danger symptoms also produce an immediate local safety alert.
 
-`POST /api/research` accepts bounded device details, symptoms, brand/model, repair service, and optional location. The server requires a completed web search and usable HTTPS source citations before returning an answer. The answer is requested in at most 180 words: a summary, safe steps, published prices, and a next action. Price extraction checks exact quoted amounts/ranges, currency, price category, a verbatim passage, and its adjacent citation. Unsupported amounts are discarded. Model-specific labels additionally require the submitted model to appear in the passage. If extraction fails, the cited answer remains available with “Quote needed”.
+Price checks establish support **within the cited search answer**, not the truth of every page or a final payable shop quote. The app does not independently fetch arbitrary source pages. Prices can be regional, conditional, outdated, or for a different model. Check the linked evidence for labour, taxes, availability, and compatibility.
 
-This verifies support **within the cited web-search answer**, not the truth of every page, a shop's stock, or a final payable quote. The app does not fetch arbitrary source pages or promise live quote accuracy. Open the linked evidence and confirm the complete price with the provider.
+**Explore my options** runs the original offline symptom checklist. Those cost, service-life, material-weight, and recovery assumptions remain explicitly unverified. In AI mode they are collapsed under **Offline planning estimate and material assumptions**; they never overwrite the sourced calculator. Recycling values remain illustrative because neither a photo nor a language model can measure the device's recoverable metals or establish a recycler's payout. Batteries, refrigerant recovery, collection fees, and processing fees are not included.
 
-Requests have body-size and time limits; errors are sanitized and secrets never enter the client bundle. Missing credentials return `503 not_configured`; the UI offers direct searches and AI companion prompts instead of fabricating an answer. Each successful research request can make two model calls, billed to the configured account.
-
-The built-in six-requests-per-minute burst guard is **process-local**, so it is not a distributed quota across Vercel instances. Configure Vercel Firewall rate limiting or equivalent deployment protection and provider spending limits before enabling the paid endpoint publicly. Same-origin validation is an additional browser check, not authentication.
-
-Vite serves the API middleware during `dev` and `preview`. On Vercel, `api/research.ts` runs as a Node.js Function. Deploying only the `dist` directory to a static host will not provide web research.
-
-## How recommendations work
-
-The model in `src/lib/estimator.ts` maps symptoms to common possible faults. It compares the midpoint repair estimate with the replacement budget and typical remaining service life:
-
-- Repair is suggested when the midpoint is at most 40% of replacement cost and there are at least two assumed years remaining.
-- Recycling is worth considering when repair reaches 60% of replacement cost, or the device has at most one assumed year remaining and repair reaches 25%.
-- Other cases, unknown or conflicting symptoms, and hazardous symptoms require inspection.
-
-These thresholds are product assumptions, not a diagnosis or a reason to discard an otherwise repairable device. The app explains its uncertainty and asks users to confirm quotes before retiring equipment.
-
-## Checks
-
-```sh
-npm test                 # Estimator behavior, safety handling, and input validation
-npm run typecheck        # TypeScript
-npm run build            # Type check and production bundle
-npm run format:check     # Formatting
-npx playwright install chromium
-npm run test:e2e         # Desktop and mobile user flows
-```
-
-To reuse a system Chromium installation in this cloud environment:
-
-```sh
-PLAYWRIGHT_CHROMIUM_EXECUTABLE=/usr/bin/chromium npm run test:e2e
-```
-
-The browser suite starts Vite automatically. Tests verify the displayed results, safety guidance, currencies, photo errors, saved estimates across reloads, report downloads, component-specific search URLs, dialog behavior, responsive layouts, research error handling, source rendering, and stale-answer clearing. Research provider responses and Map searches are intercepted in automated tests; these checks do not establish live AI accuracy, current prices, or shop availability. GitHub Actions runs the build and test suite on pushes and pull requests.
+The offline rules suggest repair below 40% of replacement cost with at least two assumed years remaining, and consider recycling above 60%, or above 25% with at most one assumed year remaining. Unknown, conflicting, and dangerous symptoms require further assessment. These thresholds are planning assumptions, not instructions to discard equipment.
 
 ## Vercel deployment
 
-The repository contains a `vercel.json` configuration for the Vite frontend plus a Node.js research function:
+The current repository is [ajsricharan25/second-life-plus-](https://github.com/ajsricharan25/second-life-plus-).
 
 | Setting   | Value           |
 | --------- | --------------- |
@@ -106,23 +71,46 @@ The repository contains a `vercel.json` configuration for the Vite frontend plus
 | Build     | `npm run build` |
 | Output    | `dist`          |
 
-Once these changes are pushed to GitHub, import the repository into a Vercel project and deploy. Set `REPAIR_AI_API_KEY` in the project environment settings to enable web research and price checking; otherwise the estimator, manual searches, companion prompts, and targeted Maps searches remain available. The research function allows up to 60 seconds; its combined provider timeout is 45 seconds. Development and saved estimates are independent of a Vercel account. A local production build does not publish the app.
+1. Import this repository, or keep the existing Vercel project connected to its `main` branch.
+2. Add one provider's variables above to the environments you use, including Production.
+3. Deploy the latest commit. Environment-variable changes require a new deployment.
+4. On the deployed site, enter a specific model and symptom and select **Analyze with AI**. Confirm the provider label, substantive answer, working citations, and price categories. Try a case with only a part listing and verify that no full bill is invented. Live testing requires an active API account with access to the configured model and search tool.
+
+`api/research.ts` runs as a Node.js Function with a 60-second Vercel limit and a shared 45-second provider timeout. A static upload of `dist` alone cannot serve the AI endpoint. Vite also exposes the API during local development and preview.
+
+Requests and provider responses are size-limited; errors are sanitized. Keys never enter the client bundle. Each assessment can incur two model calls plus the provider's search charges. The built-in six-requests-per-minute guard is process-local, not a distributed quota across Vercel instances. Use deployment-level rate limits and provider spending limits for a public deployment. Origin checking is a browser check, not authentication.
+
+## Validation
+
+```sh
+npm test
+npm run build
+npm run format:check
+npx playwright install chromium
+npm run test:e2e
+```
+
+To reuse this cloud environment's system browser:
+
+```sh
+PLAYWRIGHT_CHROMIUM_EXECUTABLE=/usr/bin/chromium npm run test:e2e
+```
+
+Unit tests cover both provider contracts, grounded citation offsets including ₹ and emoji, price extraction, source-based arithmetic, unsupported prices, optional image validation, failures, timeouts, and input bounds. Desktop/mobile browser tests cover automatic AI analysis, consent, stale-answer clearing, downloads, source rendering, accessible layouts, offline fallback, and Maps searches. Provider responses and external searches are fixtures in automated tests; passing them does not prove live model accuracy, current prices, or shop availability. GitHub Actions runs formatting, unit tests, build, and browser tests on pushes and pull requests.
 
 ## Project structure
 
 ```text
-src/App.tsx                         Application flows and pages
-src/styles.css                      Responsive interface styles
-src/components/DeviceIllustration.tsx  Device artwork
-src/lib/estimator.ts                 Symptom rules, estimates, and safe guidance
-src/lib/estimator.test.ts            Model regression tests
-src/lib/storage.ts                  Defensive local estimate storage
+src/App.tsx                         Device input, optional photo, reports and saved details
+src/components/WebResearchPanel.tsx AI assessment, sources and provider status
+src/components/PublishedPrices.tsx  Sourced prices and comparison display
+src/lib/price-comparison.ts         Deterministic arithmetic using cited prices
+src/lib/photo.ts                    Client-side photo resizing and re-encoding
+src/lib/estimator.ts                Offline symptom and material assumptions
 src/lib/service-search.ts           Component-specific Maps/web searches
-src/components/WebResearchPanel.tsx Cited web answers and failure handling
-server/research.ts                  Validated server-side web research
+server/research.ts                  Provider selection and bounded assessment workflow
+server/gemini.ts                    Gemini grounded response adapter
+server/pricing.ts                   Structured extraction and evidence validation
 api/research.ts                     Vercel Function entry point
-tests/app.spec.ts                   Browser workflow tests
-tests/research.spec.ts              Mocked web-research and targeted Maps flows
+tests/ai-assessment.spec.ts         Primary AI user flows (mocked providers)
 ```
-
-Future integrations can add server-side photo analysis, model-specific parts pricing, verified repair-shop quotes, and regional recycling rates. Keep provider credentials on the server and obtain consent before sending photos to an external service.

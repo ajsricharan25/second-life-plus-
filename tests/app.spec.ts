@@ -165,7 +165,7 @@ test('download contains the displayed estimate, guidance, and assumptions', asyn
   expect(report).toContain('Unverified repair allowance: ₹1,200–₹3,500')
   expect(report).toContain('Check the external drain hose')
   expect(report).toContain('MATERIAL ASSUMPTIONS')
-  expect(report).toContain('Photos are for reference and are not analyzed.')
+  expect(report).toContain('Photos are shared only when selected for AI analysis')
 })
 
 test('photo input previews valid images and reports invalid and unreadable files', async ({
@@ -238,7 +238,7 @@ test('how-it-works dialog explains the first version and closes by keyboard', as
   await openNavigation(page, 'How it works')
   const dialog = page.getByRole('dialog')
   await expect(dialog).toBeVisible()
-  await expect(dialog).toContainText('Photos aren’t analyzed.')
+  await expect(dialog).toContainText('analyzed only when you choose to include them')
   await expect(dialog).toContainText('Shop search opens Google Maps')
   await page.keyboard.press('Escape')
   await expect(dialog).not.toBeVisible()

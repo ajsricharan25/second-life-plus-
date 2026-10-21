@@ -8,6 +8,8 @@ export interface ResearchRequest {
   brandModel: string
   location: string
   service: string
+  image?: { mimeType: 'image/jpeg' | 'image/png' | 'image/webp'; data: string }
+  replacementCost?: number
 }
 
 export interface ResearchCitation {
@@ -22,6 +24,10 @@ export interface ResearchResult {
   text: string
   citations: ResearchCitation[]
   checkedAt: string
+  provider?: 'openai' | 'gemini'
+  model?: string
+  photoIncluded?: boolean
+  searchSuggestionsHtml?: string
   priceCheck?: {
     status: 'checked' | 'unavailable'
     items: PublishedPrice[]

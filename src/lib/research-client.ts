@@ -15,6 +15,16 @@ export function parseResearchResult(value: unknown): ResearchResult {
     data.citations.length > 50
   )
     throw new Error('Invalid research response')
+  if (
+    (data.provider !== undefined && !['openai', 'gemini'].includes(data.provider)) ||
+    (data.model !== undefined && (typeof data.model !== 'string' || data.model.length > 100)) ||
+    (data.photoIncluded !== undefined && typeof data.photoIncluded !== 'boolean') ||
+    (data.searchSuggestionsHtml !== undefined &&
+      (data.provider !== 'gemini' ||
+        typeof data.searchSuggestionsHtml !== 'string' ||
+        data.searchSuggestionsHtml.length > 32_000))
+  )
+    throw new Error('Invalid provider metadata')
   let previousEnd = 0
   for (const citation of data.citations) {
     if (

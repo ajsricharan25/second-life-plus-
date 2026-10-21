@@ -123,10 +123,10 @@ describe('search URLs', () => {
     },
   )
 
-  it('prepares a concise, source-seeking AI question without pretending the photo was analyzed', () => {
+  it('prepares a detailed, source-seeking AI question without pretending the photo was analyzed', () => {
     const prompt = buildCompanionPrompt(research)
     expect(prompt).toContain(research.symptoms)
-    expect(prompt).toContain('150 words or fewer')
+    expect(prompt).toContain('350–550 words')
     expect(prompt).toContain('whole-device replacement')
     expect(prompt).toContain('Do not invent quotes')
     expect(prompt).toContain('safe external checks')

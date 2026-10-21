@@ -152,10 +152,10 @@ ${JSON.stringify(context, null, 2)}
 Possible issue from a symptom checklist (unconfirmed): ${assessment.fault}.
 ${assessment.repairCostBasis === 'safety' ? 'Safety hazard detected: prioritize stopping use and professional handling. Do not suggest tests.' : 'Start with safe external checks only. Do not instruct me to open electrical housings or handle batteries, refrigerants, or microwave internals.'}
 
-Search current manufacturer support and reputable repair sources if you have web access. If you cannot search, say so. In 150 words or fewer, give:
-1. A one-sentence summary of the likely cause and uncertainty.
-2. Up to two safe steps specific to my symptoms.
+Search current manufacturer support and reputable repair sources if you have web access. If you cannot search, say so. In 350–550 words, give:
+1. A short summary, then ranked likely causes with evidence and uncertainty.
+2. Three to five safe checks specific to my symptoms and what each result would mean. Explain the likely remedies; do not give a generic referral instead of an answer.
 3. Published repair prices and a whole-device replacement price only when supported by a source; distinguish parts-only prices, total repairs, and new devices. Keep the source currency and region. If no reliable price exists, say “quote needed”.
-4. The next action and one useful question for the repairer.
+4. A repair-versus-replace explanation and up to two questions that would narrow down the cause.
 Link sources beside claims. Do not invent quotes or imply a photo was analyzed.`
 }

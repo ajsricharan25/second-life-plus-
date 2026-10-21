@@ -732,6 +732,7 @@ main {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  flex-wrap: wrap;
 }
 .currency-select {
   display: flex;
@@ -3232,6 +3233,68 @@ main {
 }
 .spinning {
   animation: research-spin 1.2s linear infinite;
+}
+
+.photo-consent {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin-top: 12px;
+  color: #405833;
+  font-size: 12px;
+  line-height: 1.7;
+}
+.photo-consent input {
+  margin-top: 4px;
+  width: 17px;
+  height: 17px;
+  flex-shrink: 0;
+  accent-color: #3d6335;
+}
+.planning-details {
+  border-top: 1px solid #dce5d4;
+  margin-top: 22px;
+  padding-top: 14px;
+}
+.planning-details > summary {
+  color: #405833;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.7;
+  margin-bottom: 16px;
+}
+.ai-provider-label {
+  margin-top: 8px;
+  font-size: 11px;
+  color: #405833;
+}
+.search-suggestions {
+  width: 100%;
+  height: 145px;
+  border: 1px solid #dce5d4;
+  border-radius: 8px;
+  margin-top: 12px;
+}
+.ai-cost-calculator {
+  margin-top: 18px;
+  border-top: 1px solid #dce5d4;
+  padding-top: 16px;
+}
+.ai-cost-calculator dl {
+  margin: 12px 0;
+}
+.ai-cost-calculator dl > div {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 5px 14px;
+  padding: 9px 0;
+  border-bottom: 1px solid #dce5d4;
+}
+.ai-cost-calculator dd {
+  margin: 0;
+  font-weight: 650;
 }
 @keyframes research-spin {
   to {

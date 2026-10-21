@@ -9,7 +9,17 @@ import PublishedPrices from './PublishedPrices'
 
 class ResearchError extends Error {}
 
-export default function WebResearchPanel({ request }: { request: ResearchRequest }) {
+export default function WebResearchPanel({
+  request,
+  autoStartToken = 0,
+  onAutoStart,
+  onResult,
+}: {
+  request: ResearchRequest
+  autoStartToken?: number
+  onAutoStart?: () => void
+  onResult?: (result: ResearchResult | null) => void
+}) {
   const [result, setResult] = useState<ResearchResult | null>(null)
   const [status, setStatus] = useState<'idle' | 'loading' | 'error'>('idle')
   const [message, setMessage] = useState('')
@@ -21,8 +31,20 @@ export default function WebResearchPanel({ request }: { request: ResearchRequest
     setResult(null)
     setStatus('idle')
     setMessage('')
+    onResult?.(null)
     return () => controller.current?.abort()
   }, [requestKey])
+
+  useEffect(() => {
+    if (!autoStartToken) return
+    // Schedule after mount so StrictMode cleanup cancels its first setup.
+    // Scope edits clear the answer but do not silently send a new paid request.
+    const timer = window.setTimeout(() => {
+      onAutoStart?.()
+      void research()
+    }, 0)
+    return () => window.clearTimeout(timer)
+  }, [autoStartToken])
 
   const ready = Boolean(request.service.trim())
   let searchUrl: string | null = null
@@ -47,6 +69,7 @@ export default function WebResearchPanel({ request }: { request: ResearchRequest
     setStatus('loading')
     setMessage('')
     setResult(null)
+    onResult?.(null)
     const timeout = window.setTimeout(() => active.abort('timeout'), 65_000)
     try {
       const response = await fetch('/api/research', {
@@ -72,6 +95,7 @@ export default function WebResearchPanel({ request }: { request: ResearchRequest
       const parsed = parseResearchResult(data)
       if (controller.current === active && !active.signal.aborted) {
         setResult(parsed)
+        onResult?.(parsed)
         setStatus('idle')
       }
     } catch (error) {
@@ -100,10 +124,10 @@ export default function WebResearchPanel({ request }: { request: ResearchRequest
           <BookOpen size={18} />
         </span>
         <div>
-          <h4 id="web-research-title">Research the fix and check prices</h4>
+          <h4 id="web-research-title">Your AI repair assessment</h4>
           <p>
-            A short answer for your issue, safe next steps, and prices checked against cited
-            sources.
+            A clear summary, likely causes, practical checks, repair options, and source-backed
+            prices.
           </p>
         </div>
       </div>
@@ -123,7 +147,7 @@ export default function WebResearchPanel({ request }: { request: ResearchRequest
             <Search size={16} />
           )}
           {status === 'loading'
-            ? 'Checking sources and prices…'
+            ? 'Analyzing your issue and checking sources…'
             : result
               ? 'Refresh web research'
               : 'Research this repair'}
@@ -131,8 +155,9 @@ export default function WebResearchPanel({ request }: { request: ResearchRequest
         <ArrowUpRight size={16} />
       </button>
       <p className="research-consent">
-        Research sends your device details, symptoms, and search area to OpenAI. Your photo stays in
-        this browser.
+        This sends your device details, symptoms, and search area to the configured AI provider
+        (OpenAI or Google).{' '}
+        {request.image ? 'You chose to include your photo.' : 'No photo is sent.'}
       </p>
       {status === 'loading' && (
         <p className="research-status" role="status">
@@ -158,12 +183,30 @@ export default function WebResearchPanel({ request }: { request: ResearchRequest
               })}
             </time>
           </div>
-          <PublishedPrices result={result} />
+          {result.provider && (
+            <p className="ai-provider-label">
+              {result.provider === 'gemini'
+                ? 'Google Gemini + Google Search'
+                : 'OpenAI + web search'}
+              {result.photoIncluded ? ' · Photo included' : ' · Symptoms and device details'}
+            </p>
+          )}
           <CitedAnswer result={result} />
+          {result.searchSuggestionsHtml && (
+            <iframe
+              className="search-suggestions"
+              title="Google Search suggestions"
+              sandbox="allow-popups allow-popups-to-escape-sandbox"
+              referrerPolicy="no-referrer"
+              srcDoc={`<!doctype html><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src https://www.gstatic.com https://www.google.com data:; base-uri 'none'; form-action 'none'">${result.searchSuggestionsHtml}`}
+            />
+          )}
+          <PublishedPrices result={result} request={request} />
           <p className="research-price-note">
             Published prices may be conditional or out of date. Confirm the model, parts, labor,
             taxes, and final price with the repairer. These sources do not change the illustrative
-            estimate above. Web research isn’t included in saved estimates or downloads.
+            offline planning estimates. The Download button includes this AI answer and its sources.
+            Saved estimates currently keep device details only.
           </p>
         </div>
       )}

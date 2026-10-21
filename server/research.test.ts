@@ -224,7 +224,7 @@ describe('research HTTP handler', () => {
     expect(sent).toMatchObject({
       model: 'gpt-4.1',
       store: false,
-      max_output_tokens: 1800,
+      max_output_tokens: 3000,
       tool_choice: 'required',
       parallel_tool_calls: false,
     })
@@ -358,9 +358,9 @@ describe('research HTTP handler', () => {
   })
 
   it.each([
-    { raw: 'x'.repeat(17000) },
-    { preParsed: { ...input, symptoms: 'x'.repeat(17000) } },
-    { headers: { 'content-length': '17000' } },
+    { raw: 'x'.repeat(1500001) },
+    { preParsed: { ...input, symptoms: 'x'.repeat(1500001) } },
+    { headers: { 'content-length': '1500001' } },
   ])('rejects oversized requests before calling the provider', async (options) => {
     const fetcher = successfulFetch()
     const result = await callHandler(
@@ -446,4 +446,218 @@ describe('research HTTP handler', () => {
     timestamp += 60_000
     expect((await callHandler(handler)).status).toBe(200)
   })
+})
+
+const testPhoto = {
+  mimeType: 'image/png' as const,
+  data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j6S8AAAAASUVORK5CYII=',
+}
+
+function geminiProviderResult() {
+  const text = 'Example washer 100 spare part: ₹500, parts-only, excluding labour.'
+  return {
+    candidates: [
+      {
+        finishReason: 'STOP',
+        content: { parts: [{ text }] },
+        groundingMetadata: {
+          webSearchQueries: ['washer spare part price'],
+          groundingChunks: [
+            { web: { uri: 'https://example.com/prices', title: 'Parts catalogue' } },
+          ],
+          groundingSupports: [
+            {
+              segment: { startIndex: 0, endIndex: Buffer.byteLength(text), text },
+              groundingChunkIndices: [0],
+            },
+          ],
+        },
+      },
+    ],
+  }
+}
+
+function successfulGeminiFetch() {
+  return vi
+    .fn<typeof fetch>()
+    .mockResolvedValueOnce(Response.json(geminiProviderResult()))
+    .mockResolvedValueOnce(
+      Response.json({
+        candidates: [
+          {
+            finishReason: 'STOP',
+            content: {
+              parts: [
+                {
+                  text: JSON.stringify({
+                    items: [
+                      {
+                        kind: 'part',
+                        low: 500,
+                        high: 500,
+                        currency: 'INR',
+                        modelMatch: 'exact',
+                        excerpt: geminiProviderResult().candidates[0].content.parts[0].text,
+                        citationIndex: 0,
+                      },
+                    ],
+                  }),
+                },
+              ],
+            },
+          },
+        ],
+      }),
+    )
+}
+
+describe('AI providers and optional photos', () => {
+  it('automatically selects Gemini when only its server key is configured', async () => {
+    const fetcher = successfulGeminiFetch()
+    const result = await callHandler(
+      createResearchHandler({ env: { GEMINI_API_KEY: 'gemini-test-key' }, fetcher }),
+      { preParsed: { ...input, image: testPhoto, replacementCost: 25000 } },
+    )
+    expect(result.status).toBe(200)
+    expect(result.body).toMatchObject({
+      provider: 'gemini',
+      photoIncluded: true,
+      priceCheck: {
+        status: 'checked',
+        items: [{ kind: 'part', low: 500, high: 500, modelMatch: 'exact' }],
+      },
+    })
+    expect(fetcher).toHaveBeenCalledTimes(2)
+    const [url, options] = fetcher.mock.calls[0]
+    expect(url).toBe(
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent',
+    )
+    expect(options!.headers).toMatchObject({ 'x-goog-api-key': 'gemini-test-key' })
+    expect(options!.headers).not.toHaveProperty('Authorization')
+    const first = JSON.parse(options!.body as string)
+    expect(first.tools).toEqual([{ googleSearch: {} }])
+    expect(first.contents[0].parts[1]).toEqual({ inlineData: testPhoto })
+    expect(first.contents[0].parts[0].text).toContain('25000')
+    expect(first.contents[0].parts[0].text).not.toContain(testPhoto.data)
+    const extraction = JSON.parse(fetcher.mock.calls[1][1]!.body as string)
+    expect(extraction.tools).toBeUndefined()
+    expect(extraction.generationConfig).toMatchObject({
+      responseMimeType: 'application/json',
+      responseJsonSchema: { type: 'object' },
+    })
+    expect(JSON.stringify(extraction)).not.toContain(testPhoto.data)
+    expect(result.rawBody).not.toContain('gemini-test-key')
+    expect(result.rawBody).not.toContain(testPhoto.data)
+  })
+
+  it('supports OpenAI image input only on the assessment call', async () => {
+    const fetcher = successfulFetch()
+    const result = await callHandler(
+      createResearchHandler({ env: { OPENAI_API_KEY: 'test-key' }, fetcher }),
+      { preParsed: { ...input, image: testPhoto } },
+    )
+    expect(result.body).toMatchObject({ provider: 'openai', photoIncluded: true })
+    const sent = JSON.parse(fetcher.mock.calls[0][1]!.body as string)
+    expect(sent.input[0].content[1]).toMatchObject({
+      type: 'input_image',
+      image_url: `data:image/png;base64,${testPhoto.data}`,
+    })
+    expect(fetcher.mock.calls[1][1]!.body).not.toContain(testPhoto.data)
+  })
+
+  it('respects the explicitly selected provider and model when both keys exist', async () => {
+    const fetcher = successfulGeminiFetch()
+    await callHandler(
+      createResearchHandler({
+        env: {
+          OPENAI_API_KEY: 'openai-test-key',
+          GEMINI_API_KEY: 'gemini-test-key',
+          REPAIR_AI_PROVIDER: 'gemini',
+          GEMINI_MODEL: 'custom-gemini-model',
+        },
+        fetcher,
+      }),
+    )
+    expect(fetcher.mock.calls[0][0]).toContain('/custom-gemini-model:generateContent')
+    const body = JSON.parse(fetcher.mock.calls[0][1]!.body as string)
+    expect(body.contents[0].parts).toHaveLength(1)
+  })
+
+  it('does not send data to another provider after failure or missing selected credentials', async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(new Response('provider-secret', { status: 503 }))
+    const result = await callHandler(
+      createResearchHandler({
+        env: {
+          OPENAI_API_KEY: 'openai-test-key',
+          GEMINI_API_KEY: 'gemini-test-key',
+          REPAIR_AI_PROVIDER: 'gemini',
+        },
+        fetcher,
+      }),
+    )
+    expect(result.status).toBe(502)
+    expect(fetcher).toHaveBeenCalledTimes(1)
+    expect(result.rawBody).not.toContain('provider-secret')
+    fetcher.mockClear()
+    const missing = await callHandler(
+      createResearchHandler({
+        env: { OPENAI_API_KEY: 'openai-test-key', REPAIR_AI_PROVIDER: 'gemini' },
+        fetcher,
+      }),
+    )
+    expect(missing.status).toBe(503)
+    expect(fetcher).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    { REPAIR_AI_PROVIDER: 'other' },
+    { GEMINI_API_KEY: 'test-key', GEMINI_MODEL: '../bad-model' },
+  ])('rejects invalid provider configuration', async (env) => {
+    const fetcher = successfulFetch()
+    const result = await callHandler(createResearchHandler({ env, fetcher }))
+    expect(result.status).toBe(503)
+    expect(result.body.error).toMatchObject({ code: 'configuration_error' })
+    expect(fetcher).not.toHaveBeenCalled()
+  })
+
+  it('keeps the Gemini assessment if structured extraction fails', async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json(geminiProviderResult()))
+      .mockResolvedValueOnce(Response.json({ candidates: [{ finishReason: 'MAX_TOKENS' }] }))
+    const result = await callHandler(
+      createResearchHandler({ env: { GEMINI_API_KEY: 'test-key' }, fetcher }),
+    )
+    expect(result.status).toBe(200)
+    expect(result.body.priceCheck).toEqual({ status: 'unavailable', items: [] })
+    expect(result.body.text).toContain('₹500')
+  })
+
+  it.each([
+    { mimeType: 'image/svg+xml', data: testPhoto.data },
+    { mimeType: 'image/jpeg', data: testPhoto.data },
+    { mimeType: 'image/png', data: 'not base64' },
+    { mimeType: 'image/png', data: Buffer.from('not an image').toString('base64') },
+    { mimeType: 'image/png', data: `${testPhoto.data}AAAA` },
+    {
+      mimeType: 'image/png',
+      data: Buffer.concat([
+        Buffer.from(testPhoto.data, 'base64'),
+        Buffer.alloc(1024 * 1024),
+      ]).toString('base64'),
+    },
+  ])(
+    'rejects unsupported, malformed, or oversized image input before calling a provider',
+    async (image) => {
+      const fetcher = successfulFetch()
+      const result = await callHandler(
+        createResearchHandler({ env: { OPENAI_API_KEY: 'test-key' }, fetcher }),
+        { preParsed: { ...input, image } },
+      )
+      expect(result.status).toBe(400)
+      expect(fetcher).not.toHaveBeenCalled()
+    },
+  )
 })
