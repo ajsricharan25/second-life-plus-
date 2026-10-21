@@ -444,6 +444,12 @@ const materialRates: Record<Currency, Record<MaterialName, number>> = {
 const hazardPattern =
   /smok(?:e|es|ing)|spark|sw(?:ell|oll)|bulg|puff(?:ed|ing)?|burn(?:ing|t|ed)|scorch|(?:electric\s+)?shock|on\s+fire|flame|overheat|too\s+hot|extremely\s+hot|battery.*(?:leak|punctur)|(?:leak|punctur).*battery|(?:gas|refrigerant)\s+leak|(?:exposed|bare)\s+(?:wires?|wiring|copper|conductors?)|(?:frayed|damaged|split|cut)\s+(?:(?:power|charging)\s+)?(?:cord|cable|wire)|(?:cord|cable|wir(?:e|ing)).{0,30}(?:frayed|exposed|bare)/i
 
+export function getSafetyWarning(symptoms: string): string | null {
+  return hazardPattern.test(symptoms.normalize('NFKC'))
+    ? 'Stop using and charging the device. Do not open, press, puncture, or handle a hot, smoking, wet, or swollen device. Disconnect power only if it is safe; keep people away and contact emergency services for smoke or fire. Arrange professional handling and tell the service provider about the hazard.'
+    : null
+}
+
 function rounded(value: number): number {
   return Math.round(value * 100) / 100
 }
@@ -569,9 +575,7 @@ export function estimate(input: unknown): Assessment {
           : 'Cost and remaining service life do not clearly favour one option, so get a diagnosis and written quote first.'
   }
 
-  const safetyWarning = hazard
-    ? 'Stop using and charging the device. Do not open, press, puncture, or handle a hot, smoking, wet, or swollen device. Disconnect power only if it is safe; keep people away and contact emergency services for smoke or fire. Arrange professional handling and tell the service provider about the hazard.'
-    : (profile.warning ?? null)
+  const safetyWarning = getSafetyWarning(symptoms) ?? profile.warning ?? null
 
   const guide: Assessment['guide'] = hazard
     ? [

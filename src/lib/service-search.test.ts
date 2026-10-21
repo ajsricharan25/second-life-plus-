@@ -101,7 +101,7 @@ describe('component-specific service suggestions', () => {
   it('rejects an unsupported appliance', () => {
     expect(() =>
       getSuggestedService({ ...washer, appliance: 'toaster' as ApplianceId }, estimate(washer)),
-    ).toThrow('supported appliance')
+    ).toThrow('supported device')
   })
 })
 
@@ -126,7 +126,7 @@ describe('search URLs', () => {
   it('prepares a detailed, source-seeking AI question without pretending the photo was analyzed', () => {
     const prompt = buildCompanionPrompt(research)
     expect(prompt).toContain(research.symptoms)
-    expect(prompt).toContain('350–550 words')
+    expect(prompt).toContain('500–800 words')
     expect(prompt).toContain('whole-device replacement')
     expect(prompt).toContain('Do not invent quotes')
     expect(prompt).toContain('safe external checks')

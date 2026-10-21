@@ -30,7 +30,7 @@ An existing `REPAIR_AI_API_KEY` is also accepted as an OpenAI key and takes prec
 
 Use a model available to your account that supports images, its provider's web search, and structured output. Gemini uses the native `generateContent` API with Google Search grounding; OpenAI uses the Responses API with `web_search`. Both integrations use two bounded calls:
 
-1. Research symptoms, optional photo, manufacturer guidance, repair prices, and replacement prices. Return a 350–550 word assessment with source citations.
+1. Research symptoms, optional photo, manufacturer guidance, repair prices, and replacement prices. Return a 500–800 word assessment with source citations.
 2. Extract prices from that cited answer into a strict schema, with no tools and no photo. Code validates amounts, currencies, price categories, quoted evidence, and citation proximity before displaying them.
 
 The server requires a completed answer and usable web-search evidence. It does not turn an uncited model answer into a sourced diagnosis. If price extraction fails, the cited assessment remains available and the calculator reports the missing prices.
@@ -39,15 +39,15 @@ Official references: [OpenAI web search](https://platform.openai.com/docs/guides
 
 ## User flow
 
-- Choose one of six device categories: washer, refrigerator, laptop, smartphone, TV, or microwave. Enter symptoms, age, and optionally brand/model and a replacement budget in INR or USD.
-- **Analyze with AI** starts the assessment. It covers a direct summary, ranked likely causes, safe checks and what their results mean, repair options and prices, repair versus replacement, and up to two questions to narrow the issue down.
+- Choose washer, refrigerator, laptop, smartphone, TV, microwave, or **Other devices**. For Other devices, enter the device type or name (such as an air purifier, printer, coffee machine, or game console). Describe its condition and symptoms, enter its age, and optionally add brand/model, city/postcode, and a replacement budget in INR or USD.
+- **Analyze with AI** starts the assessment for every device type. It requests a detailed 500–800 word answer covering a direct summary, ranked likely causes, safe checks and what their results mean, remedies and how to recognize success, stopping conditions, repair options and prices, repair versus replacement, and up to two questions to narrow the issue down.
 - Photos are optional and require an unchecked-by-default **Include this photo in AI analysis** consent box. The browser decodes JPEG/PNG/WebP uploads up to 8 MB, resizes to at most 1280 pixels, removes EXIF through re-encoding, and sends a JPEG no larger than 1 MB. Without consent, no photo is sent.
 - Published prices appear as **component only**, **labour/diagnostic fee**, **total repair**, or **new whole-device replacement**, with source links and quoted evidence.
 - The calculator uses a cited total repair and a cited replacement price, or the user's explicitly entered new-device budget. It computes the percentage range in code, prioritizes prices naming the submitted model, and never mixes currencies or adds unrelated parts and labour listings.
 - A ₹500 component stays ₹500. If labour or a complete repair price is missing, the app says what is missing instead of inventing a ₹1,500 bill. General examples remain labelled as such.
 - Google Maps searches use an editable component-specific service and city/postcode. There is no live shop quote or booking integration.
 - **Download** includes the current AI answer, provider, check time, citations, and clearly labelled offline estimates. **Save** stores up to 30 sets of device details in this browser; it does not retain photos or AI answers. Reopening saved details does not automatically make a paid request.
-- Editing the research service or location clears stale AI results and requires a new research action. Google/Bing searches and a detailed question to copy into ChatGPT or Perplexity remain available.
+- Editing the research service or location clears stale AI results and requires a new research action. Google/Bing searches, replacement-price searches, and a detailed question to copy into ChatGPT, Gemini, or Perplexity remain available. Custom device names are used in all these searches.
 
 ## Prices and uncertainty
 
@@ -55,7 +55,9 @@ AI can suggest plausible causes from symptoms and visible evidence; it cannot co
 
 Price checks establish support **within the cited search answer**, not the truth of every page or a final payable shop quote. The app does not independently fetch arbitrary source pages. Prices can be regional, conditional, outdated, or for a different model. Check the linked evidence for labour, taxes, availability, and compatibility.
 
-**Explore my options** runs the original offline symptom checklist. Those cost, service-life, material-weight, and recovery assumptions remain explicitly unverified. In AI mode they are collapsed under **Offline planning estimate and material assumptions**; they never overwrite the sourced calculator. Recycling values remain illustrative because neither a photo nor a language model can measure the device's recoverable metals or establish a recycler's payout. Batteries, refrigerant recovery, collection fees, and processing fees are not included.
+**Other devices** uses AI research without assigning a preset fault, replacement price, lifespan, material weight, or recycling payout. Its device name is retained in saved details, downloaded reports, and repair/shop searches. If AI is unavailable, direct search and companion options remain usable; no generic appliance estimate is substituted.
+
+For the six preset categories, **Explore my options** runs the original offline symptom checklist. Those cost, service-life, material-weight, and recovery assumptions remain explicitly unverified. In AI mode they are collapsed under **Offline planning estimate and material assumptions**; they never overwrite the sourced calculator. Recycling values remain illustrative because neither a photo nor a language model can measure the device's recoverable metals or establish a recycler's payout. Batteries, refrigerant recovery, collection fees, and processing fees are not included.
 
 The offline rules suggest repair below 40% of replacement cost with at least two assumed years remaining, and consider recycling above 60%, or above 25% with at most one assumed year remaining. Unknown, conflicting, and dangerous symptoms require further assessment. These thresholds are planning assumptions, not instructions to discard equipment.
 
@@ -96,7 +98,7 @@ To reuse this cloud environment's system browser:
 PLAYWRIGHT_CHROMIUM_EXECUTABLE=/usr/bin/chromium npm run test:e2e
 ```
 
-Unit tests cover both provider contracts, grounded citation offsets including ₹ and emoji, price extraction, source-based arithmetic, unsupported prices, optional image validation, failures, timeouts, and input bounds. Desktop/mobile browser tests cover automatic AI analysis, consent, stale-answer clearing, downloads, source rendering, accessible layouts, offline fallback, and Maps searches. Provider responses and external searches are fixtures in automated tests; passing them does not prove live model accuracy, current prices, or shop availability. GitHub Actions runs formatting, unit tests, build, and browser tests on pushes and pull requests.
+Unit tests cover custom-device validation and saved data compatibility, both provider contracts, grounded citation offsets including ₹ and emoji, price extraction, source-based arithmetic, unsupported prices, optional image validation, failures, timeouts, and input bounds. Desktop/mobile browser tests cover custom devices through photo analysis, sourced comparison, reports, saved/reopened details, Maps links and unavailable-AI fallback, plus automatic AI analysis, consent, stale-answer clearing, downloads, source rendering, accessible layouts, offline fallback, and Maps searches. Provider responses and external searches are fixtures in automated tests; passing them does not prove live model accuracy, current prices, or shop availability. GitHub Actions runs formatting, unit tests, build, and browser tests on pushes and pull requests.
 
 ## Project structure
 
@@ -107,6 +109,7 @@ src/components/PublishedPrices.tsx  Sourced prices and comparison display
 src/lib/price-comparison.ts         Deterministic arithmetic using cited prices
 src/lib/photo.ts                    Client-side photo resizing and re-encoding
 src/lib/estimator.ts                Offline symptom and material assumptions
+src/lib/device.ts                   Custom-device identity and shared input validation
 src/lib/service-search.ts           Component-specific Maps/web searches
 server/research.ts                  Provider selection and bounded assessment workflow
 server/gemini.ts                    Gemini grounded response adapter

@@ -1,7 +1,9 @@
-import type { ApplianceId, Currency } from './estimator'
+import type { Currency } from './estimator'
+import type { DeviceId } from './device'
 
 export interface ResearchRequest {
-  appliance: ApplianceId
+  appliance: DeviceId
+  deviceName?: string
   age: number
   symptoms: string
   currency: Currency

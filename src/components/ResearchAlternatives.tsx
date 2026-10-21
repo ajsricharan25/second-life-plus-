@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { Copy, ExternalLink } from 'lucide-react'
-import { buildCompanionPrompt, buildIssueSearchUrl } from '../lib/service-search'
+import {
+  buildCompanionPrompt,
+  buildIssueSearchUrl,
+  buildReplacementSearchUrl,
+} from '../lib/service-search'
 import type { ResearchRequest } from '../lib/research-types'
 
 export default function ResearchAlternatives({ request }: { request: ResearchRequest }) {
@@ -14,10 +18,17 @@ export default function ResearchAlternatives({ request }: { request: ResearchReq
   let prompt: string
   let google: string
   let bing: string
+  let replacement: string
   try {
     prompt = buildCompanionPrompt(request)
     google = buildIssueSearchUrl(request, 'google')
     bing = buildIssueSearchUrl(request, 'bing')
+    replacement = buildReplacementSearchUrl(
+      request.appliance,
+      request.brandModel,
+      request.currency,
+      request.deviceName,
+    )
   } catch {
     return (
       <p className="research-location-hint">
@@ -54,12 +65,15 @@ export default function ResearchAlternatives({ request }: { request: ResearchReq
         <a href={bing} target="_blank" rel="noreferrer">
           Search Bing <ExternalLink size={13} />
         </a>
+        <a href={replacement} target="_blank" rel="noreferrer">
+          Search replacement prices <ExternalLink size={13} />
+        </a>
       </div>
       <details open={showPrompt} onToggle={(event) => setShowPrompt(event.currentTarget.open)}>
         <summary>Ask an AI search companion</summary>
         <p>
-          Copy the prepared question, then paste it into ChatGPT or Perplexity. Their own access and
-          usage limits apply. Your photo is not included.
+          Copy the prepared question, then paste it into ChatGPT, Gemini, or Perplexity. Their own
+          access and usage limits apply. Your photo is not included.
         </p>
         <div className="research-links">
           <button type="button" onClick={() => void copyPrompt()}>
@@ -67,6 +81,9 @@ export default function ResearchAlternatives({ request }: { request: ResearchReq
           </button>
           <a href="https://chatgpt.com/" target="_blank" rel="noreferrer">
             Open ChatGPT <ExternalLink size={13} />
+          </a>
+          <a href="https://gemini.google.com/" target="_blank" rel="noreferrer">
+            Open Gemini <ExternalLink size={13} />
           </a>
           <a href="https://www.perplexity.ai/" target="_blank" rel="noreferrer">
             Open Perplexity <ExternalLink size={13} />

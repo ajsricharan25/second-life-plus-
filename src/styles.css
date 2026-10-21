@@ -3329,3 +3329,33 @@ main {
     max-width: 8px;
   }
 }
+
+.device-option:last-child:nth-child(7) {
+  grid-column: 1 / -1;
+  flex-direction: row;
+  gap: 10px;
+}
+.custom-device-note {
+  margin-top: 20px;
+  padding: 16px;
+  border: 1px solid #dce5d4;
+  border-radius: 10px;
+  background: #f7f9f3;
+  font-size: 12px;
+  line-height: 1.8;
+  color: #405833;
+}
+.custom-device-note h4 {
+  margin: 0 0 6px;
+  font-size: 14px;
+}
+.custom-device-note p + p {
+  margin-top: 8px;
+}
+.result-device > div {
+  min-width: 0;
+}
+.result-device h3,
+.saved-card h2 {
+  overflow-wrap: anywhere;
+}

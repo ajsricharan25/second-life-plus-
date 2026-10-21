@@ -1,9 +1,9 @@
-import { estimate, type AssessmentInput } from './estimator'
+import { validateDeviceInput, type DeviceInput } from './device'
 
 export interface SavedEstimate {
   id: string
   createdAt: string
-  input: AssessmentInput
+  input: DeviceInput
   brandModel?: string
 }
 
@@ -25,7 +25,7 @@ export function readSavedEstimates(): SavedEstimate[] {
               (typeof entry.brandModel !== 'string' || entry.brandModel.length > 120))
           )
             return false
-          estimate(entry.input)
+          validateDeviceInput(entry.input)
           return true
         } catch {
           return false
