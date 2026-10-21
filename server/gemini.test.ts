@@ -85,14 +85,48 @@ describe('Gemini grounded answer adapter', () => {
     expect(() => extractGeminiResearch(value, '')).toThrow()
   })
 
-  it.each(['webSearchQueries', 'groundingChunks', 'groundingSupports'] as const)(
-    'requires %s',
-    (field) => {
-      const value = fixture()
-      value.candidates[0].groundingMetadata[field] = []
-      expect(() => extractGeminiResearch(value, '')).toThrow()
-    },
-  )
+  it.each(['groundingChunks', 'groundingSupports'] as const)('requires %s', (field) => {
+    const value = fixture()
+    value.candidates[0].groundingMetadata[field] = []
+    expect(() => extractGeminiResearch(value, '')).toThrow()
+  })
+
+  it('accepts grounded citations without the optional search queries or source title', () => {
+    const value = fixture()
+    const grounding = value.candidates[0].groundingMetadata
+    Object.assign(grounding, { webSearchQueries: undefined })
+    grounding.groundingChunks = [{ web: { uri: source.web.uri, title: '' } }]
+    const result = extractGeminiResearch(value, '')
+    expect(result.citations[0].title).toBe('example.com')
+    expect(result.text).toBe(`${text} [1]`)
+  })
+
+  it.each(['utf16', 'codepoints'])('accepts %s offsets only with an exact quote match', (unit) => {
+    const value = fixture()
+    const quote = 'The spare part is ₹500, excluding labour.'
+    const prefix = 'Summary 🧺\n'
+    const size = (value: string) => (unit === 'utf16' ? value.length : Array.from(value).length)
+    value.candidates[0].groundingMetadata.groundingSupports[0].segment = {
+      startIndex: size(prefix),
+      endIndex: size(text),
+      text: quote,
+    }
+    expect(extractGeminiResearch(value, '').text).toBe(`${text} [1]`)
+    value.candidates[0].groundingMetadata.groundingSupports[0].segment.text =
+      'Unrelated price: ₹1500'
+    expect(() => extractGeminiResearch(value, '')).toThrow()
+  })
+
+  it('identifies blocked prompts and truncated answers for actionable errors', () => {
+    expect(() => extractGeminiResearch({ promptFeedback: { blockReason: 'SAFETY' } }, '')).toThrow(
+      expect.objectContaining({ code: 'response_blocked' }),
+    )
+    const truncated = fixture()
+    truncated.candidates[0].finishReason = 'MAX_TOKENS'
+    expect(() => extractGeminiResearch(truncated, '')).toThrow(
+      expect.objectContaining({ code: 'incomplete_answer' }),
+    )
+  })
 
   it('rejects unsafe links and preserves bounded Google Search attribution', () => {
     const value = fixture()

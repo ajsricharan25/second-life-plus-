@@ -379,7 +379,7 @@ describe('research HTTP handler', () => {
       createResearchHandler({ env: { REPAIR_AI_API_KEY: 'test-key' }, fetcher }),
     )
     expect(result.status).toBe(502)
-    expect(result.body.error).toMatchObject({ code: 'provider_unavailable' })
+    expect(result.body.error).toMatchObject({ code: 'api_key_invalid' })
     expect(result.rawBody).not.toContain('internal details')
     expect(result.rawBody).not.toContain('test-key')
   })
@@ -512,6 +512,78 @@ function successfulGeminiFetch() {
 }
 
 describe('AI providers and optional photos', () => {
+  it.each([
+    [400, 'API key not valid. Please pass a valid API key.', 'api_key_invalid'],
+    [403, 'Your API key was reported as leaked. Please use another API key.', 'api_key_blocked'],
+    [403, 'API has not been used in this project or it is disabled.', 'api_access_denied'],
+    [429, 'Quota exceeded for requests per day.', 'provider_quota_exceeded'],
+    [404, 'Model is not found for API version v1beta.', 'model_unavailable'],
+  ] as const)('returns a specific %s Gemini failure as %s', async (status, message, code) => {
+    const log = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const fetcher = vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce(
+          Response.json({ error: { message: `${message} private-provider-details` } }, { status }),
+        )
+      const result = await callHandler(
+        createResearchHandler({ env: { GEMINI_API_KEY: 'gemini-test-key' }, fetcher }),
+        { preParsed: { ...input, image: testPhoto } },
+      )
+      expect(result.status).toBe(status === 429 ? 429 : 502)
+      expect(result.body.error).toMatchObject({ code })
+      expect(result.body).not.toHaveProperty('priceCheck')
+      expect(fetcher).toHaveBeenCalledTimes(1)
+      expect(log).toHaveBeenCalledExactlyOnceWith(
+        '[repair-research]',
+        JSON.stringify({ provider: 'gemini', code, upstreamStatus: status }),
+      )
+      for (const sensitive of ['private-provider-details', 'gemini-test-key', testPhoto.data]) {
+        expect(result.rawBody).not.toContain(sensitive)
+        expect(JSON.stringify(log.mock.calls)).not.toContain(sensitive)
+      }
+    } finally {
+      log.mockRestore()
+    }
+  })
+
+  it.each([
+    { response: { candidates: [{ finishReason: 'MAX_TOKENS' }] }, code: 'incomplete_answer' },
+    { response: { promptFeedback: { blockReason: 'SAFETY' } }, code: 'response_blocked' },
+    {
+      response: {
+        candidates: [{ finishReason: 'STOP', content: { parts: [{ text: 'Uncited answer' }] } }],
+      },
+      code: 'unverified_sources',
+    },
+  ])('explains $code without making a price extraction request', async ({ response, code }) => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(Response.json(response))
+    const result = await callHandler(
+      createResearchHandler({ env: { GEMINI_API_KEY: 'test-key' }, fetcher }),
+    )
+    expect(result.status).toBe(502)
+    expect(result.body.error).toMatchObject({ code })
+    expect(result.body).not.toHaveProperty('priceCheck')
+    expect(fetcher).toHaveBeenCalledTimes(1)
+  })
+
+  it('accepts copied environment values with surrounding whitespace', async () => {
+    const fetcher = successfulGeminiFetch()
+    const result = await callHandler(
+      createResearchHandler({
+        env: {
+          REPAIR_AI_PROVIDER: ' Gemini\n',
+          GEMINI_API_KEY: ' test-key\n',
+          GEMINI_MODEL: ' gemini-flash-latest\n',
+        },
+        fetcher,
+      }),
+    )
+    expect(result.status).toBe(200)
+    expect(result.body.model).toBe('gemini-flash-latest')
+    expect(fetcher.mock.calls[0][1]!.headers).toMatchObject({ 'x-goog-api-key': 'test-key' })
+  })
+
   it('automatically selects Gemini when only its server key is configured', async () => {
     const fetcher = successfulGeminiFetch()
     const result = await callHandler(
@@ -530,7 +602,7 @@ describe('AI providers and optional photos', () => {
     expect(fetcher).toHaveBeenCalledTimes(2)
     const [url, options] = fetcher.mock.calls[0]
     expect(url).toBe(
-      'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent',
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent',
     )
     expect(options!.headers).toMatchObject({ 'x-goog-api-key': 'gemini-test-key' })
     expect(options!.headers).not.toHaveProperty('Authorization')

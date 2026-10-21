@@ -15,6 +15,7 @@ import {
 } from './pricing.ts'
 import { safeSourceUrl } from './source-url.ts'
 import { extractGeminiJson, extractGeminiResearch } from './gemini.ts'
+import { aiError, classifyProviderError, ResearchError } from './research-error.ts'
 
 type ResearchHttpRequest = IncomingMessage & { body?: unknown }
 type Environment = Record<string, string | undefined>
@@ -30,16 +31,6 @@ interface HandlerOptions {
 const MAX_BODY_BYTES = 1_500_000
 const MAX_PROVIDER_BYTES = 512 * 1024
 const PROVIDER_URL = 'https://api.openai.com/v1/responses'
-
-class ResearchError extends Error {
-  constructor(
-    readonly status: number,
-    readonly code: string,
-    message: string,
-  ) {
-    super(message)
-  }
-}
 
 function record(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -321,9 +312,10 @@ export function createResearchHandler(options: HandlerOptions = {}) {
       }
       const input = parseResearchRequest(await readRequestBody(request))
       const env = options.env ?? process.env
-      const openAIKey = env.REPAIR_AI_API_KEY || env.OPENAI_API_KEY
+      const openAIKey = env.REPAIR_AI_API_KEY?.trim() || env.OPENAI_API_KEY?.trim()
       const provider =
-        env.REPAIR_AI_PROVIDER || (openAIKey ? 'openai' : env.GEMINI_API_KEY ? 'gemini' : 'openai')
+        env.REPAIR_AI_PROVIDER?.trim().toLowerCase() ||
+        (openAIKey ? 'openai' : env.GEMINI_API_KEY?.trim() ? 'gemini' : 'openai')
       if (!['openai', 'gemini'].includes(provider)) {
         throw new ResearchError(
           503,
@@ -331,7 +323,7 @@ export function createResearchHandler(options: HandlerOptions = {}) {
           'The AI provider configuration needs attention.',
         )
       }
-      const apiKey = provider === 'gemini' ? env.GEMINI_API_KEY : openAIKey
+      const apiKey = provider === 'gemini' ? env.GEMINI_API_KEY?.trim() : openAIKey
       if (!apiKey) {
         throw new ResearchError(
           503,
@@ -341,8 +333,8 @@ export function createResearchHandler(options: HandlerOptions = {}) {
       }
       const model =
         provider === 'gemini'
-          ? env.GEMINI_MODEL || 'gemini-3.8-flash'
-          : env.REPAIR_AI_MODEL || 'gpt-4.1'
+          ? env.GEMINI_MODEL?.trim() || 'gemini-flash-latest'
+          : env.REPAIR_AI_MODEL?.trim() || 'gpt-4.1'
       if (!/^[a-zA-Z0-9._:-]{1,100}$/.test(model)) {
         throw new ResearchError(
           503,
@@ -411,7 +403,7 @@ export function createResearchHandler(options: HandlerOptions = {}) {
                     },
                   ],
                   tools: [{ googleSearch: {} }],
-                  generationConfig: { maxOutputTokens: 4096 },
+                  generationConfig: { maxOutputTokens: 8192 },
                 }
               : {
                   model,
@@ -449,17 +441,35 @@ export function createResearchHandler(options: HandlerOptions = {}) {
           ),
         })
         if (!result.ok) {
-          await result.body?.cancel()
-          throw new ResearchError(
-            502,
-            'provider_unavailable',
-            'The research provider is unavailable. Please try again later; the local estimate remains available.',
+          let details: unknown
+          try {
+            details = await readProviderBody(result)
+          } catch {
+            /* Classify malformed errors by HTTP status only. */
+          }
+          const failure = classifyProviderError(
+            result.status,
+            details,
+            provider as 'gemini' | 'openai',
           )
+          // Never log raw provider messages, device details, photos, or credentials.
+          console.warn(
+            '[repair-research]',
+            JSON.stringify({ provider, code: failure.code, upstreamStatus: result.status }),
+          )
+          throw failure
         }
-        const research = (provider === 'gemini' ? extractGeminiResearch : extractResearchResult)(
-          await readProviderBody(result),
-          new Date(now()).toISOString(),
-        )
+        let research: ResearchResult
+        try {
+          research = (provider === 'gemini' ? extractGeminiResearch : extractResearchResult)(
+            await readProviderBody(result),
+            new Date(now()).toISOString(),
+          )
+        } catch (error) {
+          const failure = error instanceof ResearchError ? error : aiError('unverified_sources')
+          console.warn('[repair-research]', JSON.stringify({ provider, code: failure.code }))
+          throw failure
+        }
         research.provider = provider as 'gemini' | 'openai'
         research.model = model
         research.photoIncluded = Boolean(image)

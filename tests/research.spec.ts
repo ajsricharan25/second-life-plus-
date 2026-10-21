@@ -25,6 +25,57 @@ async function openEstimate(page: Page) {
   )
 }
 
+for (const failure of [
+  { code: 'api_key_invalid', status: 502, message: /The AI provider rejected the API key/ },
+  {
+    code: 'provider_quota_exceeded',
+    status: 429,
+    message: /The AI provider’s quota or rate limit/,
+  },
+  { code: 'model_unavailable', status: 502, message: /The configured AI model is unavailable/ },
+  {
+    code: 'unverified_sources',
+    status: 502,
+    message: /The AI replied without usable search citations/,
+  },
+]) {
+  test(`research explains ${failure.code} and keeps direct search available`, async ({ page }) => {
+    let requests = 0
+    await page.route('**/api/research', (route) => {
+      requests++
+      return route.fulfill({
+        status: failure.status,
+        json: { error: { code: failure.code, message: 'Raw provider details must not display' } },
+      })
+    })
+    await openEstimate(page)
+    await page.getByRole('button', { name: 'Research this repair' }).click()
+    await expect(page.getByText(failure.message)).toBeVisible()
+    await expect(page.getByText('Raw provider details must not display')).toHaveCount(0)
+    await expect(page.getByText('WEB-SOURCED INFORMATION')).toHaveCount(0)
+    await expect(page.getByRole('region', { name: 'Source-backed price check' })).toHaveCount(0)
+    await expect(page.getByRole('link', { name: 'Search Google' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Research this repair' })).toBeEnabled()
+    expect(requests).toBe(1)
+  })
+}
+
+test('non-JSON gateway timeout explains the failure without showing the gateway body', async ({
+  page,
+}) => {
+  await page.route('**/api/research', (route) =>
+    route.fulfill({
+      status: 504,
+      contentType: 'text/html',
+      body: '<html>Private gateway diagnostics</html>',
+    }),
+  )
+  await openEstimate(page)
+  await page.getByRole('button', { name: 'Research this repair' }).click()
+  await expect(page.getByText(/The AI research timed out/)).toBeVisible()
+  await expect(page.getByText('Private gateway diagnostics')).toHaveCount(0)
+})
+
 test('research and alternatives work without a location and offer a fallback without an API key', async ({
   page,
 }) => {

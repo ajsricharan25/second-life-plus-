@@ -21,10 +21,10 @@ The offline estimator, Google/Bing searches, AI companion prompt, and component-
 
 Set these variables in `.env.local` for development or **Vercel → Project → Settings → Environment Variables** for deployment. Keys stay on the server: never commit them, put them in a `VITE_` variable, or paste them into the app.
 
-| Provider      | Required variables                                       | Optional model                  |
-| ------------- | -------------------------------------------------------- | ------------------------------- |
-| Google Gemini | `REPAIR_AI_PROVIDER=gemini`, `GEMINI_API_KEY=<your key>` | `GEMINI_MODEL=gemini-3.8-flash` |
-| OpenAI        | `REPAIR_AI_PROVIDER=openai`, `OPENAI_API_KEY=<your key>` | `REPAIR_AI_MODEL=gpt-4.1`       |
+| Provider      | Required variables                                       | Optional model                     |
+| ------------- | -------------------------------------------------------- | ---------------------------------- |
+| Google Gemini | `REPAIR_AI_PROVIDER=gemini`, `GEMINI_API_KEY=<your key>` | `GEMINI_MODEL=gemini-flash-latest` |
+| OpenAI        | `REPAIR_AI_PROVIDER=openai`, `OPENAI_API_KEY=<your key>` | `REPAIR_AI_MODEL=gpt-4.1`          |
 
 An existing `REPAIR_AI_API_KEY` is also accepted as an OpenAI key and takes precedence over `OPENAI_API_KEY`. If the provider is omitted, an OpenAI key selects OpenAI; otherwise a Gemini key selects Gemini. Explicit selection is recommended when both keys exist. Failure never silently sends the request to the other provider.
 
@@ -34,6 +34,8 @@ Use a model available to your account that supports images, its provider's web s
 2. Extract prices from that cited answer into a strict schema, with no tools and no photo. Code validates amounts, currencies, price categories, quoted evidence, and citation proximity before displaying them.
 
 The server requires a completed answer and usable web-search evidence. It does not turn an uncited model answer into a sourced diagnosis. If price extraction fails, the cited assessment remains available and the calculator reports the missing prices.
+
+The default Gemini model is `gemini-flash-latest`, the Flash alias used in [Google's native `generateContent` quickstart](https://github.com/googleapis/js-genai#quickstart). Google can update the model behind this alias. Set `GEMINI_MODEL` to a supported model ID to pin a version; an existing override takes precedence over the default. Model and Google Search availability still depend on your API account.
 
 Official references: [OpenAI web search](https://platform.openai.com/docs/guides/tools-web-search), [Gemini Google Search grounding](https://ai.google.dev/gemini-api/docs/google-search), [Gemini structured output](https://ai.google.dev/gemini-api/docs/structured-output), and [Google's grounding examples](https://github.com/google-gemini/cookbook/blob/main/quickstarts/Grounding.ipynb).
 
@@ -81,6 +83,22 @@ The current repository is [ajsricharan25/second-life-plus-](https://github.com/a
 `api/research.ts` runs as a Node.js Function with a 60-second Vercel limit and a shared 45-second provider timeout. A static upload of `dist` alone cannot serve the AI endpoint. Vite also exposes the API during local development and preview.
 
 Requests and provider responses are size-limited; errors are sanitized. Keys never enter the client bundle. Each assessment can incur two model calls plus the provider's search charges. The built-in six-requests-per-minute guard is process-local, not a distributed quota across Vercel instances. Use deployment-level rate limits and provider spending limits for a public deployment. Origin checking is a browser check, not authentication.
+
+### Troubleshoot AI research
+
+An API key being present does not establish that Google accepted the request. Research failures now show a specific message instead of reporting every failure as “no reliable answer.”
+
+| Error                             | What to check                                                                                                                                                |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| AI connection is not configured   | Set `GEMINI_API_KEY` and `REPAIR_AI_PROVIDER=gemini` for Production, then redeploy.                                                                          |
+| Key rejected or access denied     | Check the key's project, restrictions, and Gemini API access in Google AI Studio / Google Cloud.                                                             |
+| Google reports the key as exposed | Create a replacement key, update the Vercel variable, and redeploy.                                                                                          |
+| Model unavailable                 | Remove an outdated `GEMINI_MODEL` override to use the default, or select a model your account supports; redeploy.                                            |
+| Provider quota / billing          | Check the provider's usage, quota, and billing dashboard. This differs from the app's one-minute burst limit.                                                |
+| No usable citations               | Add the exact model and a concrete symptom. The provider replied, but the app could not validate search citations; it does not substitute an invented price. |
+| Incomplete answer / timeout       | Retry with a focused description. If persistent, check model availability and the function's execution limit.                                                |
+
+Vercel function logs for provider rejections include `[repair-research]`, the provider, a fixed error code, and the upstream HTTP status. Citation/response failures include the provider and error code. Raw provider errors, API keys, photos, and device details are excluded. To inspect the live app, use its public URL from **Visit** or **Domains**; a `prj_...` project ID is not a website address.
 
 ## Validation
 

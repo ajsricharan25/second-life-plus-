@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { ArrowUpRight, BookOpen, Info, LoaderCircle, Search } from 'lucide-react'
 import { parseResearchResult } from '../lib/research-client'
+import { researchErrorMessage } from '../lib/research-errors'
 import type { ResearchRequest, ResearchResult } from '../lib/research-types'
 import { buildIssueSearchUrl } from '../lib/service-search'
 import ResearchAlternatives from './ResearchAlternatives'
@@ -78,19 +79,10 @@ export default function WebResearchPanel({
         body: JSON.stringify(request),
         signal: active.signal,
       })
-      const data: unknown = await response.json()
+      const data: unknown = await response.json().catch(() => null)
       if (!response.ok) {
         const errorCode = (data as { error?: { code?: string } } | null)?.error?.code
-        if (errorCode === 'not_configured') {
-          throw new ResearchError(
-            'Web research isn’t enabled yet. You can still search published information directly below.',
-          )
-        }
-        if (response.status === 429)
-          throw new ResearchError('Too many research requests. Please wait a minute and try again.')
-        throw new ResearchError(
-          'We couldn’t find a reliable, sourced answer right now. Try again or open a web search below.',
-        )
+        throw new ResearchError(researchErrorMessage(errorCode, response.status))
       }
       const parsed = parseResearchResult(data)
       if (controller.current === active && !active.signal.aborted) {
