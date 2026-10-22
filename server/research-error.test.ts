@@ -78,6 +78,92 @@ describe('safe, actionable provider errors', () => {
       classifyProviderError(429, { error: { code: 'rate_limit_exceeded' } }, 'openai').code,
     ).toBe('provider_quota_exceeded')
   })
+  it.each([
+    'You exceeded your current quota, please check your plan and billing details.',
+    'Quota exceeded. Review your billing account and rate limits.',
+    'Quota exceeded. Please enable billing to increase your limits.',
+  ])('does not treat Gemini quota guidance as a billing requirement: %s', (message) => {
+    const result = classifyProviderError(
+      429,
+      {
+        error: {
+          status: 'RESOURCE_EXHAUSTED',
+          message,
+          details: [
+            {
+              '@type': 'type.googleapis.com/google.rpc.QuotaFailure',
+              violations: [
+                {
+                  quotaMetric:
+                    'generativelanguage.googleapis.com/generate_content_free_tier_requests',
+                },
+              ],
+            },
+          ],
+        },
+      },
+      'gemini',
+    )
+    expect(result.code).toBe('provider_quota_exceeded')
+    expect(result.status).toBe(429)
+    expect(result.message).not.toContain('requires billing')
+  })
+  it('uses structured quota status even if the HTTP status is not 429', () => {
+    expect(
+      classifyProviderError(
+        400,
+        {
+          error: {
+            status: 'RESOURCE_EXHAUSTED',
+            message: 'You exceeded your current quota, please check your plan and billing details.',
+          },
+        },
+        'gemini',
+      ).code,
+    ).toBe('provider_quota_exceeded')
+  })
+  it('preserves confirmed billing failures and OpenAI credit errors', () => {
+    expect(
+      classifyProviderError(
+        403,
+        {
+          error: { details: [{ reason: 'BILLING_DISABLED' }] },
+        },
+        'gemini',
+      ).code,
+    ).toBe('provider_billing_required')
+    expect(
+      classifyProviderError(
+        429,
+        {
+          error: {
+            message: 'You exceeded your current quota, please check your plan and billing details.',
+          },
+        },
+        'openai',
+      ).code,
+    ).toBe('provider_billing_required')
+    expect(
+      classifyProviderError(
+        400,
+        {
+          error: { message: 'Billing is not enabled for this project.' },
+        },
+        'gemini',
+      ).code,
+    ).toBe('provider_billing_required')
+  })
+  it('does not infer billing requirements from an unrelated account mention', () => {
+    expect(
+      classifyProviderError(
+        503,
+        {
+          error: { message: 'Temporary failure retrieving billing account metadata.' },
+        },
+        'gemini',
+      ).code,
+    ).toBe('provider_unavailable')
+  })
   it('handles unstructured and missing provider errors safely', () => {
     expect(classifyProviderError(403, undefined, 'gemini').code).toBe('api_access_denied')
     expect(classifyProviderError(502, '<html>secret</html>', 'openai').code).toBe(

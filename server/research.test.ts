@@ -517,6 +517,12 @@ describe('AI providers and optional photos', () => {
     [403, 'Your API key was reported as leaked. Please use another API key.', 'api_key_blocked'],
     [403, 'API has not been used in this project or it is disabled.', 'api_access_denied'],
     [429, 'Quota exceeded for requests per day.', 'provider_quota_exceeded'],
+    [
+      429,
+      'You exceeded your current quota, please check your plan and billing details.',
+      'provider_quota_exceeded',
+    ],
+    [400, 'Please enable billing for this project.', 'provider_billing_required'],
     [404, 'Model is not found for API version v1beta.', 'model_unavailable'],
   ] as const)('returns a specific %s Gemini failure as %s', async (status, message, code) => {
     const log = vi.spyOn(console, 'warn').mockImplementation(() => {})

@@ -100,6 +100,8 @@ An API key being present does not establish that Google accepted the request. Re
 
 Vercel function logs for provider rejections include `[repair-research]`, the provider, a fixed error code, and the upstream HTTP status. Citation/response failures include the provider and error code. Raw provider errors, API keys, photos, and device details are excluded. To inspect the live app, use its public URL from **Visit** or **Domains**; a `prj_...` project ID is not a website address.
 
+Gemini `429` / `RESOURCE_EXHAUSTED` responses can say “check your plan and billing” even when the immediate failure is a rate or quota limit. The app treats these as quota failures unless Google explicitly identifies a billing failure. In Google AI Studio, select the project associated with the key and check that model's usage and rate limits. An exhausted allowance may reset; an allowance of zero requires an eligible model or account configuration. A new key in the same project does not provide a separate quota. Only enable paid billing after checking your project's requirements and pricing.
+
 ## Validation
 
 ```sh
