@@ -542,7 +542,12 @@ describe('AI providers and optional photos', () => {
       expect(fetcher).toHaveBeenCalledTimes(1)
       expect(log).toHaveBeenCalledExactlyOnceWith(
         '[repair-research]',
-        JSON.stringify({ provider: 'gemini', code, upstreamStatus: status }),
+        JSON.stringify({
+          code,
+          provider: 'gemini',
+          model: 'gemini-flash-latest',
+          upstreamStatus: status,
+        }),
       )
       for (const sensitive of ['private-provider-details', 'gemini-test-key', testPhoto.data]) {
         expect(result.rawBody).not.toContain(sensitive)
@@ -551,6 +556,59 @@ describe('AI providers and optional photos', () => {
     } finally {
       log.mockRestore()
     }
+  })
+
+  it('returns the deployed model and bounded daily quota evidence without exposing provider details', async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      Response.json(
+        {
+          error: {
+            status: 'RESOURCE_EXHAUSTED',
+            message: 'private-project-data',
+            details: [
+              {
+                '@type': 'type.googleapis.com/google.rpc.QuotaFailure',
+                violations: [
+                  {
+                    quotaMetric:
+                      'generativelanguage.googleapis.com/generate_content_free_tier_requests',
+                    quotaId: 'GenerateRequestsPerDayPerProjectPerModel-FreeTier',
+                    quotaValue: '500',
+                    quotaDimensions: {
+                      project: 'private-project-data',
+                      model: 'private-provider-field',
+                    },
+                  },
+                ],
+              },
+              { '@type': 'type.googleapis.com/google.rpc.RetryInfo', retryDelay: '32.5s' },
+            ],
+          },
+        },
+        { status: 429 },
+      ),
+    )
+    const result = await callHandler(
+      createResearchHandler({
+        env: { GEMINI_API_KEY: 'test-key', GEMINI_MODEL: 'gemini-3.1-flash-lite' },
+        fetcher,
+      }),
+    )
+    expect(result.status).toBe(429)
+    expect(result.body.error).toMatchObject({
+      code: 'provider_quota_exceeded',
+      details: {
+        provider: 'gemini',
+        model: 'gemini-3.1-flash-lite',
+        upstreamStatus: 429,
+        limits: [{ resource: 'requests', period: 'day', allowance: 500 }],
+        retryAfterSeconds: 33,
+      },
+    })
+    expect(result.headers['retry-after']).toBe(33)
+    expect(result.rawBody).not.toContain('private-')
+    expect(result.rawBody).not.toContain('test-key')
+    expect(fetcher).toHaveBeenCalledTimes(1)
   })
 
   it.each([

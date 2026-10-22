@@ -3,12 +3,20 @@ import type { ReactNode } from 'react'
 import { ArrowUpRight, BookOpen, Info, LoaderCircle, Search } from 'lucide-react'
 import { parseResearchResult } from '../lib/research-client'
 import { researchErrorMessage } from '../lib/research-errors'
+import { failureDetailLines } from '../lib/research-failure-details'
 import type { ResearchRequest, ResearchResult } from '../lib/research-types'
 import { buildIssueSearchUrl } from '../lib/service-search'
 import ResearchAlternatives from './ResearchAlternatives'
 import PublishedPrices from './PublishedPrices'
 
-class ResearchError extends Error {}
+class ResearchError extends Error {
+  constructor(
+    message: string,
+    readonly details: string[] = [],
+  ) {
+    super(message)
+  }
+}
 
 export default function WebResearchPanel({
   request,
@@ -24,6 +32,7 @@ export default function WebResearchPanel({
   const [result, setResult] = useState<ResearchResult | null>(null)
   const [status, setStatus] = useState<'idle' | 'loading' | 'error'>('idle')
   const [message, setMessage] = useState('')
+  const [failureDetails, setFailureDetails] = useState<string[]>([])
   const controller = useRef<AbortController | null>(null)
   const requestKey = JSON.stringify(request)
 
@@ -32,6 +41,7 @@ export default function WebResearchPanel({
     setResult(null)
     setStatus('idle')
     setMessage('')
+    setFailureDetails([])
     onResult?.(null)
     return () => controller.current?.abort()
   }, [requestKey])
@@ -69,6 +79,7 @@ export default function WebResearchPanel({
     controller.current = active
     setStatus('loading')
     setMessage('')
+    setFailureDetails([])
     setResult(null)
     onResult?.(null)
     const timeout = window.setTimeout(() => active.abort('timeout'), 65_000)
@@ -81,8 +92,11 @@ export default function WebResearchPanel({
       })
       const data: unknown = await response.json().catch(() => null)
       if (!response.ok) {
-        const errorCode = (data as { error?: { code?: string } } | null)?.error?.code
-        throw new ResearchError(researchErrorMessage(errorCode, response.status))
+        const failure = (data as { error?: { code?: unknown; details?: unknown } } | null)?.error
+        throw new ResearchError(
+          researchErrorMessage(failure?.code, response.status),
+          failureDetailLines(failure?.details),
+        )
       }
       const parsed = parseResearchResult(data)
       if (controller.current === active && !active.signal.aborted) {
@@ -97,6 +111,7 @@ export default function WebResearchPanel({
       )
         return
       setStatus('error')
+      setFailureDetails(error instanceof ResearchError ? error.details : [])
       setMessage(
         active.signal.reason === 'timeout'
           ? 'Research took too long. Try again or search the web directly below.'
@@ -162,6 +177,16 @@ export default function WebResearchPanel({
           <Info size={15} />
           {message}
         </p>
+      )}
+      {message && failureDetails.length > 0 && (
+        <details className="research-error-details">
+          <summary>Connection details</summary>
+          <ul>
+            {failureDetails.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+        </details>
       )}
       {result && (
         <div className="research-result" aria-live="polite">

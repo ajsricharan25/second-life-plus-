@@ -3007,6 +3007,18 @@ main {
 .research-message svg {
   margin-top: 3px;
 }
+.research-error-details {
+  margin: 0 0 18px;
+  color: #526943;
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+.research-error-details summary {
+  cursor: pointer;
+}
+.research-error-details li {
+  margin-top: 6px;
+}
 .research-status {
   font-size: 11px;
   color: #597442;

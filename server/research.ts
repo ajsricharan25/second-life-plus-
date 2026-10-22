@@ -16,6 +16,7 @@ import {
 import { safeSourceUrl } from './source-url.ts'
 import { extractGeminiJson, extractGeminiResearch } from './gemini.ts'
 import { aiError, classifyProviderError, ResearchError } from './research-error.ts'
+import { providerDiagnostics } from './provider-diagnostics.ts'
 
 type ResearchHttpRequest = IncomingMessage & { body?: unknown }
 type Environment = Record<string, string | undefined>
@@ -452,10 +453,18 @@ export function createResearchHandler(options: HandlerOptions = {}) {
             details,
             provider as 'gemini' | 'openai',
           )
+          failure.details = providerDiagnostics(
+            details,
+            provider as 'gemini' | 'openai',
+            model,
+            result.status,
+          )
+          if (failure.status === 429 && failure.details.retryAfterSeconds)
+            response.setHeader('Retry-After', failure.details.retryAfterSeconds)
           // Never log raw provider messages, device details, photos, or credentials.
           console.warn(
             '[repair-research]',
-            JSON.stringify({ provider, code: failure.code, upstreamStatus: result.status }),
+            JSON.stringify({ code: failure.code, ...failure.details }),
           )
           throw failure
         }
@@ -467,7 +476,11 @@ export function createResearchHandler(options: HandlerOptions = {}) {
           )
         } catch (error) {
           const failure = error instanceof ResearchError ? error : aiError('unverified_sources')
-          console.warn('[repair-research]', JSON.stringify({ provider, code: failure.code }))
+          failure.details = providerDiagnostics(undefined, provider as 'gemini' | 'openai', model)
+          console.warn(
+            '[repair-research]',
+            JSON.stringify({ code: failure.code, ...failure.details }),
+          )
           throw failure
         }
         research.provider = provider as 'gemini' | 'openai'
@@ -555,7 +568,11 @@ export function createResearchHandler(options: HandlerOptions = {}) {
               'Web research could not be completed. Please try again later.',
             )
       sendJson(response, failure.status, {
-        error: { code: failure.code, message: failure.message },
+        error: {
+          code: failure.code,
+          message: failure.message,
+          ...(failure.details ? { details: failure.details } : {}),
+        },
       })
     }
   }

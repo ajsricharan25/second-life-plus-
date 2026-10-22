@@ -76,6 +76,49 @@ test('non-JSON gateway timeout explains the failure without showing the gateway 
   await expect(page.getByText('Private gateway diagnostics')).toHaveCount(0)
 })
 
+test('quota connection details show the requested model, hide private fields, and clear after editing', async ({
+  page,
+}) => {
+  let requests = 0
+  await page.route('**/api/research', (route) => {
+    requests++
+    return route.fulfill({
+      status: 429,
+      json: {
+        error: {
+          code: 'provider_quota_exceeded',
+          message: 'private provider message',
+          details: {
+            provider: 'gemini',
+            model: 'gemini-3.1-flash-lite',
+            upstreamStatus: 429,
+            limits: [{ resource: 'search', period: 'day', allowance: 0 }],
+            retryAfterSeconds: 30,
+            rawError: 'private provider message',
+          },
+        },
+      },
+    })
+  })
+  await openEstimate(page)
+  await page.getByRole('button', { name: 'Research this repair' }).click()
+  await page.getByText('Connection details', { exact: true }).click()
+  await expect(page.getByText('Model requested: gemini-3.1-flash-lite.')).toBeVisible()
+  await expect(
+    page.getByText('Reported limit: web search / grounding per day; allowance 0.'),
+  ).toBeVisible()
+  await expect(
+    page.getByText(/Waiting alone may not make this model or feature available/),
+  ).toBeVisible()
+  await expect(page.getByText('private provider message')).toHaveCount(0)
+  expect(
+    (await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze()).violations,
+  ).toEqual([])
+  await page.getByLabel('City or postcode').fill('Chennai')
+  await expect(page.getByText('Connection details', { exact: true })).toHaveCount(0)
+  expect(requests).toBe(1)
+})
+
 test('research and alternatives work without a location and offer a fallback without an API key', async ({
   page,
 }) => {

@@ -1,6 +1,8 @@
 import { researchErrorMessages, type ResearchErrorCode } from '../src/lib/research-errors.ts'
+import type { ResearchFailureDetails } from '../src/lib/research-failure-details.ts'
 
 export class ResearchError extends Error {
+  details?: ResearchFailureDetails
   constructor(
     readonly status: number,
     readonly code: string,
