@@ -35,6 +35,7 @@ export default function WebResearchPanel({
   const [failureDetails, setFailureDetails] = useState<string[]>([])
   const controller = useRef<AbortController | null>(null)
   const requestKey = JSON.stringify(request)
+  const modelOnly = result?.evidence === 'model-only'
 
   useEffect(() => {
     controller.current?.abort()
@@ -131,10 +132,12 @@ export default function WebResearchPanel({
           <BookOpen size={18} />
         </span>
         <div>
-          <h4 id="web-research-title">Your AI repair assessment</h4>
+          <h4 id="web-research-title">
+            {modelOnly ? 'AI repair guidance' : 'Your AI repair assessment'}
+          </h4>
           <p>
-            A clear summary, likely causes, practical checks, repair options, and source-backed
-            prices.
+            A clear summary, likely causes, practical checks, and repair options. Prices need
+            supporting web evidence.
           </p>
         </div>
       </div>
@@ -154,22 +157,26 @@ export default function WebResearchPanel({
             <Search size={16} />
           )}
           {status === 'loading'
-            ? 'Analyzing your issue and checking sources…'
+            ? 'Preparing your repair assessment…'
             : result
-              ? 'Refresh web research'
+              ? modelOnly
+                ? 'Refresh AI guidance'
+                : 'Refresh web research'
               : 'Research this repair'}
         </span>
         <ArrowUpRight size={16} />
       </button>
       <p className="research-consent">
         This sends your device details, symptoms, and search area to the configured AI provider
-        (OpenAI or Google).{' '}
-        {request.image ? 'You chose to include your photo.' : 'No photo is sent.'}
+        (OpenAI, Google, or Groq). Web research may also send a text search query to Tavily.{' '}
+        {request.image
+          ? 'You chose to include your photo with the AI provider only.'
+          : 'No photo is sent.'}
       </p>
       {status === 'loading' && (
         <p className="research-status" role="status">
-          Searching published information, then checking price amounts and categories against the
-          cited answer.
+          Analyzing your device details and preparing repair guidance. Source and price checks
+          depend on available web evidence.
         </p>
       )}
       {message && (
@@ -191,9 +198,9 @@ export default function WebResearchPanel({
       {result && (
         <div className="research-result" aria-live="polite">
           <div className="research-result-label">
-            <span>WEB-SOURCED INFORMATION</span>
+            <span>{modelOnly ? 'AI GUIDANCE · NO WEB CHECK' : 'WEB-SOURCED INFORMATION'}</span>
             <time dateTime={result.checkedAt}>
-              Checked{' '}
+              {modelOnly ? 'Generated' : 'Checked'}{' '}
               {new Date(result.checkedAt).toLocaleString(undefined, {
                 dateStyle: 'medium',
                 timeStyle: 'short',
@@ -204,8 +211,24 @@ export default function WebResearchPanel({
             <p className="ai-provider-label">
               {result.provider === 'gemini'
                 ? 'Google Gemini + Google Search'
-                : 'OpenAI + web search'}
+                : result.provider === 'groq'
+                  ? modelOnly
+                    ? 'Groq · AI guidance'
+                    : result.webSearch?.status === 'used'
+                      ? 'Groq + Tavily web search'
+                      : 'Groq + web search'
+                  : 'OpenAI + web search'}
               {result.photoIncluded ? ' · Photo included' : ' · Symptoms and device details'}
+            </p>
+          )}
+          {modelOnly && (
+            <p className="research-price-note">
+              {result.webSearch?.status === 'unavailable'
+                ? 'Web search was unavailable for this assessment. '
+                : 'This assessment has no web check. '}
+              This is AI guidance from your details and any photo you shared. Likely causes are
+              unconfirmed, and no current repair or replacement price has been verified. Use the
+              direct searches below to check published guidance and prices.
             </p>
           )}
           <CitedAnswer result={result} />
@@ -220,10 +243,10 @@ export default function WebResearchPanel({
           )}
           <PublishedPrices result={result} request={request} />
           <p className="research-price-note">
-            Published prices may be conditional or out of date. Confirm the model, parts, labor,
-            taxes, and final price with the repairer. These sources do not change the illustrative
-            offline planning estimates. The Download button includes this AI answer and its sources.
-            Saved estimates currently keep device details only.
+            {modelOnly
+              ? 'Download includes this guidance labelled as having no web check, alongside any clearly labelled offline estimates. '
+              : 'Published prices may be conditional or out of date. Confirm the model, parts, labor, taxes, and final price with the repairer. These sources do not change the illustrative offline planning estimates. Download includes this AI answer and its sources. '}
+            Saved estimates keep device details only.
           </p>
         </div>
       )}
@@ -259,19 +282,21 @@ function CitedAnswer({ result }: { result: ResearchResult }) {
   return (
     <>
       <div className="research-answer">{content}</div>
-      <ol className="research-sources" aria-label="Research sources">
-        {sources.map((source) => (
-          <li key={source.url}>
-            <a href={source.url} target="_blank" rel="noreferrer">
-              <span>
-                {source.title || new URL(source.url).hostname}
-                <small>{new URL(source.url).hostname}</small>
-              </span>
-              <ArrowUpRight size={14} />
-            </a>
-          </li>
-        ))}
-      </ol>
+      {sources.length > 0 && (
+        <ol className="research-sources" aria-label="Research sources">
+          {sources.map((source) => (
+            <li key={source.url}>
+              <a href={source.url} target="_blank" rel="noreferrer">
+                <span>
+                  {source.title || new URL(source.url).hostname}
+                  <small>{new URL(source.url).hostname}</small>
+                </span>
+                <ArrowUpRight size={14} />
+              </a>
+            </li>
+          ))}
+        </ol>
+      )}
     </>
   )
 }

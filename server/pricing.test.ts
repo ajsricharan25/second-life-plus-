@@ -54,6 +54,7 @@ describe('published price support checks', () => {
   it.each([
     { low: 1500, high: 1500 },
     { kind: 'total-repair' },
+    { kind: 'labor' },
     { currency: 'USD' },
     { citationIndex: 1 },
     { excerpt: 'The full repair costs ₹500.' },

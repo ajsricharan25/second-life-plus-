@@ -11,6 +11,9 @@ export default defineConfig(({ mode }) => {
     'REPAIR_AI_PROVIDER',
     'GEMINI_API_KEY',
     'GEMINI_MODEL',
+    'GROQ_API_KEY',
+    'GROQ_MODEL',
+    'TAVILY_API_KEY',
   ]
   const localEnv = loadEnv(mode, process.cwd(), keys)
   for (const key of keys) {

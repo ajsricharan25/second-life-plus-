@@ -453,6 +453,161 @@ const testPhoto = {
   data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j6S8AAAAASUVORK5CYII=',
 }
 
+describe('Groq HTTP integration', () => {
+  function groqFetch() {
+    return vi.fn<typeof fetch>().mockImplementation(async () =>
+      Response.json({
+        choices: [
+          {
+            finish_reason: 'stop',
+            message: {
+              role: 'assistant',
+              content: JSON.stringify({
+                sections: [
+                  {
+                    heading: 'Summary',
+                    text: 'Inspect the external hose with power disconnected. A blockage is possible; the pump is unconfirmed.',
+                    sourceIds: [],
+                  },
+                ],
+                prices: [],
+              }),
+            },
+          },
+        ],
+      }),
+    )
+  }
+
+  it('auto-selects Groq when only its key is set and returns the model-only contract', async () => {
+    const fetcher = groqFetch()
+    const result = await callHandler(
+      createResearchHandler({ env: { GROQ_API_KEY: ' test-groq-key ' }, fetcher }),
+    )
+    expect(result.status).toBe(200)
+    expect(result.headers['cache-control']).toBe('no-store')
+    expect(result.body).toMatchObject({
+      provider: 'groq',
+      model: 'qwen/qwen3.8-27b',
+      evidence: 'model-only',
+      citations: [],
+      priceCheck: { status: 'unavailable', items: [] },
+    })
+    expect(fetcher).toHaveBeenCalledTimes(1)
+    expect(fetcher.mock.calls[0][0]).toBe('https://api.groq.com/openai/v1/chat/completions')
+    expect(fetcher.mock.calls[0][1]?.headers).toMatchObject({
+      Authorization: 'Bearer test-groq-key',
+    })
+  })
+
+  it('honours explicit Groq selection despite old provider keys and passes a consented image', async () => {
+    const fetcher = groqFetch()
+    const result = await callHandler(
+      createResearchHandler({
+        env: {
+          REPAIR_AI_PROVIDER: ' Groq ',
+          GROQ_API_KEY: 'test-groq-key',
+          GROQ_MODEL: ' qwen/qwen3.8-27b ',
+          GEMINI_API_KEY: 'old-gemini-key',
+          OPENAI_API_KEY: 'old-openai-key',
+        },
+        fetcher,
+      }),
+      { preParsed: { ...input, image: testPhoto } },
+    )
+    expect(result.status).toBe(200)
+    expect(result.body.photoIncluded).toBe(true)
+    expect(fetcher).toHaveBeenCalledTimes(1)
+    const sent = JSON.parse(fetcher.mock.calls[0][1]!.body as string)
+    expect(sent.model).toBe('qwen/qwen3.8-27b')
+    expect(sent.messages[1].content[1].image_url.url).toBe(
+      `data:image/png;base64,${testPhoto.data}`,
+    )
+  })
+
+  it('does not fall back to another configured provider when the selected key is missing', async () => {
+    const fetcher = groqFetch()
+    const result = await callHandler(
+      createResearchHandler({
+        env: { REPAIR_AI_PROVIDER: 'groq', GEMINI_API_KEY: 'old-key' },
+        fetcher,
+      }),
+    )
+    expect(result.status).toBe(503)
+    expect(result.body.error).toMatchObject({ code: 'not_configured' })
+    expect(fetcher).not.toHaveBeenCalled()
+  })
+
+  it.each(['../qwen/model', 'https://example.com/model', 'qwen/model/extra', 'x'.repeat(101)])(
+    'rejects an invalid model path: %s',
+    async (model) => {
+      const fetcher = groqFetch()
+      const result = await callHandler(
+        createResearchHandler({ env: { GROQ_API_KEY: 'test-key', GROQ_MODEL: model }, fetcher }),
+      )
+      expect(result.status).toBe(503)
+      expect(result.body.error).toMatchObject({ code: 'configuration_error' })
+      expect(fetcher).not.toHaveBeenCalled()
+    },
+  )
+
+  it('returns safe quota diagnostics and Retry-After without provider fallback', async () => {
+    const log = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const fetcher = vi
+        .fn<typeof fetch>()
+        .mockResolvedValue(
+          Response.json(
+            { error: { code: 'rate_limit_exceeded', message: 'private details test-groq-key' } },
+            { status: 429, headers: { 'Retry-After': '30' } },
+          ),
+        )
+      const result = await callHandler(
+        createResearchHandler({
+          env: {
+            REPAIR_AI_PROVIDER: 'groq',
+            GROQ_API_KEY: 'test-groq-key',
+            GEMINI_API_KEY: 'old-key',
+          },
+          fetcher,
+        }),
+      )
+      expect(result.status).toBe(429)
+      expect(result.headers['retry-after']).toBe(30)
+      expect(result.body.error).toMatchObject({
+        code: 'provider_quota_exceeded',
+        details: {
+          provider: 'groq',
+          model: 'qwen/qwen3.8-27b',
+          upstreamStatus: 429,
+          retryAfterSeconds: 30,
+        },
+      })
+      expect(result.rawBody).not.toMatch(/private details|test-groq-key/)
+      expect(fetcher).toHaveBeenCalledTimes(1)
+    } finally {
+      log.mockRestore()
+    }
+  })
+
+  it('applies the shared timeout to Groq requests', async () => {
+    const fetcher = vi.fn<typeof fetch>().mockImplementation(
+      (_url, options) =>
+        new Promise((_resolve, reject) => {
+          options?.signal?.addEventListener('abort', () =>
+            reject(new DOMException('Aborted', 'AbortError')),
+          )
+        }),
+    )
+    const result = await callHandler(
+      createResearchHandler({ env: { GROQ_API_KEY: 'test-key' }, fetcher, timeoutMs: 10 }),
+    )
+    expect(result.status).toBe(504)
+    expect(result.body.error).toMatchObject({ code: 'research_timeout' })
+    expect(fetcher).toHaveBeenCalledTimes(1)
+  })
+})
+
 function geminiProviderResult() {
   const text = 'Example washer 100 spare part: ₹500, parts-only, excluding labour.'
   return {

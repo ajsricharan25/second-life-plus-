@@ -338,13 +338,20 @@ function App() {
       '',
       ...(aiResult
         ? [
-            'AI REPAIR ASSESSMENT',
-            `Provider: ${aiResult.provider === 'gemini' ? 'Google Gemini' : 'OpenAI'}`,
-            `Sources checked: ${aiResult.checkedAt}`,
+            aiResult.evidence === 'model-only'
+              ? 'AI REPAIR GUIDANCE — NO WEB CHECK'
+              : 'AI REPAIR ASSESSMENT',
+            `Provider: ${aiResult.provider === 'gemini' ? 'Google Gemini' : aiResult.provider === 'groq' ? 'Groq' : aiResult.provider === 'openai' ? 'OpenAI' : 'Not specified'}`,
+            `${aiResult.evidence === 'model-only' ? 'Guidance generated' : 'Sources checked'}: ${aiResult.checkedAt}`,
             `Photo shared for analysis: ${aiResult.photoIncluded ? 'Yes' : 'No'}`,
+            ...(aiResult.evidence === 'model-only'
+              ? [
+                  'This AI guidance has not been checked against current web sources. Likely causes are unconfirmed. No current repair or replacement price has been verified.',
+                ]
+              : []),
             aiText,
             '',
-            'SOURCES',
+            ...(aiResult.citations.length ? ['SOURCES'] : []),
             ...aiResult.citations.map(
               (citation, index) => `[${index + 1}] ${citation.title}: ${citation.url}`,
             ),
@@ -381,7 +388,7 @@ function App() {
               ? [`Safety: ${getSafetyWarning(input.symptoms)}`]
               : []),
           ]),
-      'The offline calculation uses symptom rules and illustrative costs, not verified shop quotes. AI assessments use the supplied details and cited sources but may be wrong. Photos are shared only when selected for AI analysis and are not included in this report. Recycler fees and recovery rates affect actual payouts.',
+      'The offline calculation uses symptom rules and illustrative costs, not verified shop quotes. AI assessments use the supplied details and any available cited sources but may be wrong. Guidance without a web check is labelled above. Photos are shared only when selected for AI analysis and are not included in this report. Recycler fees and recovery rates affect actual payouts.',
     ].join('\n')
     const url = URL.createObjectURL(new Blob([report], { type: 'text/plain;charset=utf-8' }))
     const link = document.createElement('a')
@@ -734,7 +741,7 @@ function App() {
                                 onChange={(event) => setIncludePhoto(event.target.checked)}
                               />
                               Include this photo in AI analysis. A resized copy will be sent to the
-                              configured provider (OpenAI or Google).
+                              configured provider (OpenAI, Google, or Groq).
                             </label>
                           )}
                           {photoError && (
@@ -876,7 +883,8 @@ function App() {
                         )}
                         <p className="estimate-disclaimer">
                           <Info size={13} /> Analyze with AI sends your device details and symptoms
-                          to the configured AI provider.{' '}
+                          to the configured AI provider. Web research may send a text search query
+                          to Tavily; photos go only to the AI provider when you opt in.{' '}
                           {appliance !== 'other' &&
                             '“Explore my options” uses the offline checklist. '}
                           AI can suggest likely causes, but cannot measure internal faults.
@@ -1551,15 +1559,17 @@ function App() {
                 </p>
                 <p>
                   The offline checklist is separate from the AI assessment. AI uses your symptoms,
-                  optional photo, and current sources to explain likely causes, checks, remedies,
+                  optional photo, and available sources to explain likely causes, checks, remedies,
                   and repair-versus-replace choices. It cannot measure internal faults or guarantee
                   a diagnosis. Photos are never included in saved estimates.
                 </p>
                 <p>
                   Web research looks for published guidance and prices for your model, symptoms,
-                  repair service, and area. Source links and a checked date accompany each answer.
-                  Published prices may have conditions; confirm the final charge with a repairer.
-                  Google Maps searches use the suggested component or service, which you can edit.
+                  repair service, and area. Web-checked answers include source links and a checked
+                  date. Groq can also provide clearly labelled guidance without a web check; current
+                  prices remain unverified in that mode. Published prices may have conditions;
+                  confirm the final charge with a repairer. Google Maps searches use the suggested
+                  component or service, which you can edit.
                 </p>
               </div>
             </section>
@@ -1614,10 +1624,11 @@ function App() {
           <div className="dialog-note">
             <Info size={18} />
             <p>
-              Analyze with AI uses OpenAI or Gemini, your symptoms, and cited sources. Photos are
-              analyzed only when you choose to include them. The offline checklist uses illustrative
-              prices. Shop search opens Google Maps for the selected service. Published component
-              prices are kept separate from complete repair costs.
+              Analyze with AI uses OpenAI, Gemini, or Groq, your symptoms, and available sources.
+              Groq guidance without a web check is labelled, with current prices left unverified.
+              Photos are analyzed only when you choose to include them. The offline checklist uses
+              illustrative prices. Shop search opens Google Maps for the selected service. Published
+              component prices are kept separate from complete repair costs.
             </p>
           </div>
           <button

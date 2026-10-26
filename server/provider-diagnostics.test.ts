@@ -3,6 +3,18 @@ import { providerDiagnostics } from './provider-diagnostics'
 import { failureDetailLines, parseFailureDetails } from '../src/lib/research-failure-details'
 
 describe('bounded provider diagnostics', () => {
+  it('reports a Groq model with a provider prefix without treating it as an OpenAI request', () => {
+    const details = providerDiagnostics({}, 'groq', 'qwen/qwen3.8-27b', 429)
+    expect(details).toEqual({ provider: 'groq', model: 'qwen/qwen3.8-27b', upstreamStatus: 429 })
+    expect(failureDetailLines(details)).toContain('Provider: Groq.')
+    expect(failureDetailLines(details)).toContain('Model requested: qwen/qwen3.8-27b.')
+    expect(
+      parseFailureDetails({ provider: 'gemini', model: 'qwen/qwen3.8-27b' }),
+    ).not.toHaveProperty('model')
+    expect(parseFailureDetails({ provider: 'groq', model: 'private-value' })).not.toHaveProperty(
+      'model',
+    )
+  })
   it('distinguishes daily search and per-minute token limits using structured Google fields', () => {
     const details = providerDiagnostics(
       {

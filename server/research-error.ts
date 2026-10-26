@@ -1,5 +1,6 @@
 import { researchErrorMessages, type ResearchErrorCode } from '../src/lib/research-errors.ts'
 import type { ResearchFailureDetails } from '../src/lib/research-failure-details.ts'
+import type { ResearchProvider } from '../src/lib/research-types.ts'
 
 export class ResearchError extends Error {
   details?: ResearchFailureDetails
@@ -23,7 +24,7 @@ function record(value: unknown): value is Record<string, unknown> {
 export function classifyProviderError(
   status: number,
   body: unknown,
-  provider: 'gemini' | 'openai',
+  provider: ResearchProvider,
 ): ResearchError {
   const error = record(body) && record(body.error) ? body.error : {}
   const message = typeof error.message === 'string' ? error.message.slice(0, 8000) : ''
@@ -48,7 +49,7 @@ export function classifyProviderError(
     return aiError('api_key_invalid')
   if (
     /BILLING_DISABLED|BILLING_NOT_ACTIVE/.test(tags) ||
-    (provider === 'openai' &&
+    ((provider === 'openai' || provider === 'groq') &&
       (/INSUFFICIENT_QUOTA/.test(tags) ||
         /exceeded your current quota, please check your plan and billing/i.test(message)))
   )
@@ -71,7 +72,8 @@ export function classifyProviderError(
     return aiError('provider_billing_required')
   if (status === 403 || /PERMISSION_DENIED|SERVICE_DISABLED|API_KEY_.*BLOCKED/.test(tags))
     return aiError('api_access_denied')
-  if (status === 404 || /MODEL_NOT_FOUND/.test(tags)) return aiError('model_unavailable')
+  if (status === 404 || /MODEL_NOT_FOUND|MODEL_DECOMMISSIONED/.test(tags))
+    return aiError('model_unavailable')
   if (status === 400 || status === 422 || /INVALID_ARGUMENT|FAILED_PRECONDITION/.test(tags))
     return aiError('provider_request_rejected')
   return aiError('provider_unavailable')

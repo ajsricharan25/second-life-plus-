@@ -1,3 +1,5 @@
+import type { ResearchProvider } from './research-types.ts'
+
 export type QuotaLimit = {
   resource: 'requests' | 'tokens' | 'search' | 'unknown'
   period: 'minute' | 'day' | 'unknown'
@@ -5,7 +7,7 @@ export type QuotaLimit = {
 }
 
 export type ResearchFailureDetails = {
-  provider: 'gemini' | 'openai'
+  provider: ResearchProvider
   model?: string
   upstreamStatus?: number
   limits?: QuotaLimit[]
@@ -19,12 +21,18 @@ function record(value: unknown): value is Record<string, unknown> {
 // Allow only bounded public diagnostics. Never display provider error text,
 // project identifiers, arbitrary quota names, or unrecognized object fields.
 export function parseFailureDetails(value: unknown): ResearchFailureDetails | null {
-  if (!record(value) || (value.provider !== 'gemini' && value.provider !== 'openai')) return null
+  if (
+    !record(value) ||
+    (value.provider !== 'gemini' && value.provider !== 'openai' && value.provider !== 'groq')
+  )
+    return null
   const result: ResearchFailureDetails = { provider: value.provider }
   if (
     typeof value.model === 'string' &&
     value.model.length <= 100 &&
-    /^(?:gemini-[a-z0-9._-]+|gpt-[a-z0-9._-]+|o[0-9][a-z0-9._-]*)$/.test(value.model)
+    (/^(?:gemini-[a-z0-9._-]+|gpt-[a-z0-9._-]+|o[0-9][a-z0-9._-]*)$/.test(value.model) ||
+      (value.provider === 'groq' &&
+        /^(?:qwen|openai|meta-llama|moonshotai|groq)\/[a-z0-9][a-z0-9._-]*$/.test(value.model)))
   )
     result.model = value.model
   if (
@@ -73,7 +81,9 @@ export function parseFailureDetails(value: unknown): ResearchFailureDetails | nu
 export function failureDetailLines(value: unknown): string[] {
   const details = parseFailureDetails(value)
   if (!details) return []
-  const lines = [`Provider: ${details.provider === 'gemini' ? 'Google Gemini' : 'OpenAI'}.`]
+  const lines = [
+    `Provider: ${{ gemini: 'Google Gemini', openai: 'OpenAI', groq: 'Groq' }[details.provider]}.`,
+  ]
   if (details.model) lines.push(`Model requested: ${details.model}.`)
   if (details.upstreamStatus) lines.push(`Provider HTTP status: ${details.upstreamStatus}.`)
   for (const limit of details.limits ?? []) {

@@ -95,6 +95,14 @@ export function validatePublishedPrices(
     if (!citation || !kindEvidence[kind as PublishedPrice['kind']].test(excerpt)) continue
     if (kind === 'total-repair' && /parts?[- ]only|exclud(?:es|ing)\s+labou?r/i.test(excerpt))
       continue
+    // A new spare part is not a new whole device. Excluded labour is not a fee.
+    // Ambiguous mixed listings require a narrower excerpt rather than a guessed category.
+    if (
+      kind === 'replacement' &&
+      /\b(?:spare|component|part|parts|refurbished|used)\b/i.test(excerpt)
+    )
+      continue
+    if (kind === 'labor' && /exclud(?:es|ing)\s+labou?r|parts?[- ]only/i.test(excerpt)) continue
     const start = research.text.lastIndexOf(excerpt, citation.end)
     if (
       start < 0 ||

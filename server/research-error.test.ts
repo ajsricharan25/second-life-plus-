@@ -78,6 +78,21 @@ describe('safe, actionable provider errors', () => {
       classifyProviderError(429, { error: { code: 'rate_limit_exceeded' } }, 'openai').code,
     ).toBe('provider_quota_exceeded')
   })
+  it('classifies Groq rate limits and retired models without exposing provider text', () => {
+    expect(
+      classifyProviderError(
+        429,
+        { error: { code: 'rate_limit_exceeded', message: 'Private organization information' } },
+        'groq',
+      ).code,
+    ).toBe('provider_quota_exceeded')
+    expect(
+      classifyProviderError(400, { error: { code: 'model_decommissioned' } }, 'groq').code,
+    ).toBe('model_unavailable')
+    expect(classifyProviderError(401, { error: { code: 'invalid_api_key' } }, 'groq').code).toBe(
+      'api_key_invalid',
+    )
+  })
   it.each([
     'You exceeded your current quota, please check your plan and billing details.',
     'Quota exceeded. Review your billing account and rate limits.',

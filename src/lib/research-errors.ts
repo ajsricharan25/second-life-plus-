@@ -24,6 +24,8 @@ export const researchErrorMessages = {
     'The AI provider could not be reached or is temporarily unavailable. Try again shortly or use the direct searches below.',
   unverified_sources:
     'The AI replied without usable search citations. Try adding the exact model and a specific symptom, or use the direct searches below. No sourced price has been established.',
+  invalid_response:
+    'The AI response could not be validated. Try a focused description or use the direct searches below.',
   incomplete_answer:
     'The AI response ended before it was complete. Try again with a focused description of the main problem.',
   response_blocked:

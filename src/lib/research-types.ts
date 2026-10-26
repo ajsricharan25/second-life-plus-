@@ -1,6 +1,8 @@
 import type { Currency } from './estimator'
 import type { DeviceId } from './device'
 
+export type ResearchProvider = 'openai' | 'gemini' | 'groq'
+
 export interface ResearchRequest {
   appliance: DeviceId
   deviceName?: string
@@ -26,7 +28,12 @@ export interface ResearchResult {
   text: string
   citations: ResearchCitation[]
   checkedAt: string
-  provider?: 'openai' | 'gemini'
+  provider?: ResearchProvider
+  evidence?: 'web' | 'model-only'
+  webSearch?: {
+    provider: 'tavily'
+    status: 'used' | 'not-configured' | 'unavailable'
+  }
   model?: string
   photoIncluded?: boolean
   searchSuggestionsHtml?: string

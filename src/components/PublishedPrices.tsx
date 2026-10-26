@@ -17,10 +17,13 @@ export default function PublishedPrices({
   request: ResearchRequest
 }) {
   const check = result.priceCheck
+  const modelOnly = result.evidence === 'model-only'
   const comparison = comparePublishedPrices(result, request.currency, request.replacementCost)
   return (
     <section className="published-prices" aria-labelledby="price-check-title">
-      <h4 id="price-check-title">Source-backed price check</h4>
+      <h4 id="price-check-title">
+        {modelOnly ? 'Price check — no web evidence' : 'Source-backed price check'}
+      </h4>
       {check?.status === 'checked' && check.items.length > 0 ? (
         <>
           <ul className="published-price-list">
@@ -60,12 +63,17 @@ export default function PublishedPrices({
       ) : (
         <p>
           <strong>Quote needed.</strong>{' '}
-          {check?.status === 'checked'
-            ? 'No clearly priced repair, part, or replacement could be extracted with supporting citations.'
-            : 'The price check could not be completed. No verified amount is available for the calculator.'}
+          {modelOnly
+            ? 'Current prices have not been checked against web sources. No verified amount is available for the calculator.'
+            : check?.status === 'checked'
+              ? 'No clearly priced repair, part, or replacement could be extracted with supporting citations.'
+              : 'The price check could not be completed. No verified amount is available for the calculator.'}
         </p>
       )}
-      <div className="ai-cost-calculator" aria-label="AI-sourced cost calculator">
+      <div
+        className="ai-cost-calculator"
+        aria-label={modelOnly ? 'Repair cost calculator' : 'AI-sourced cost calculator'}
+      >
         <h4>Repair vs. replacement calculator</h4>
         {comparison.status === 'ready' ? (
           <>

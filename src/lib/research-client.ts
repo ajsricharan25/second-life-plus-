@@ -3,6 +3,7 @@ import type { ResearchResult } from './research-types'
 export function parseResearchResult(value: unknown): ResearchResult {
   if (!value || typeof value !== 'object') throw new Error('Invalid research response')
   const data = value as Partial<ResearchResult>
+  const modelOnly = data.evidence === 'model-only'
   if (
     data.status !== 'ok' ||
     typeof data.text !== 'string' ||
@@ -11,12 +12,13 @@ export function parseResearchResult(value: unknown): ResearchResult {
     typeof data.checkedAt !== 'string' ||
     !Number.isFinite(Date.parse(data.checkedAt)) ||
     !Array.isArray(data.citations) ||
-    data.citations.length === 0 ||
+    (!modelOnly && data.citations.length === 0) ||
     data.citations.length > 50
   )
     throw new Error('Invalid research response')
   if (
-    (data.provider !== undefined && !['openai', 'gemini'].includes(data.provider)) ||
+    (data.provider !== undefined && !['openai', 'gemini', 'groq'].includes(data.provider)) ||
+    (data.evidence !== undefined && !['web', 'model-only'].includes(data.evidence)) ||
     (data.model !== undefined && (typeof data.model !== 'string' || data.model.length > 100)) ||
     (data.photoIncluded !== undefined && typeof data.photoIncluded !== 'boolean') ||
     (data.searchSuggestionsHtml !== undefined &&
@@ -25,6 +27,24 @@ export function parseResearchResult(value: unknown): ResearchResult {
         data.searchSuggestionsHtml.length > 32_000))
   )
     throw new Error('Invalid provider metadata')
+  if (
+    modelOnly &&
+    (data.provider !== 'groq' ||
+      data.citations.length !== 0 ||
+      data.priceCheck?.status !== 'unavailable' ||
+      !Array.isArray(data.priceCheck.items) ||
+      data.priceCheck.items.length !== 0)
+  )
+    throw new Error('Model-only guidance cannot contain verified sources or prices')
+  if (
+    data.webSearch !== undefined &&
+    (!data.webSearch ||
+      data.provider !== 'groq' ||
+      data.webSearch.provider !== 'tavily' ||
+      !['used', 'not-configured', 'unavailable'].includes(data.webSearch.status) ||
+      (modelOnly ? data.webSearch.status === 'used' : data.webSearch.status !== 'used'))
+  )
+    throw new Error('Invalid web search metadata')
   let previousEnd = 0
   for (const citation of data.citations) {
     if (

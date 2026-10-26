@@ -3,6 +3,7 @@ import {
   type QuotaLimit,
   type ResearchFailureDetails,
 } from '../src/lib/research-failure-details.ts'
+import type { ResearchProvider } from '../src/lib/research-types.ts'
 
 function record(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -10,7 +11,7 @@ function record(value: unknown): value is Record<string, unknown> {
 
 export function providerDiagnostics(
   body: unknown,
-  provider: 'gemini' | 'openai',
+  provider: ResearchProvider,
   model: string,
   upstreamStatus?: number,
 ): ResearchFailureDetails {
