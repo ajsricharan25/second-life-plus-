@@ -96,7 +96,7 @@ describe('other devices', () => {
     const prompt = buildCompanionPrompt(input)
     expect(prompt).toContain(input.symptoms)
     expect(prompt).toContain('500–800 words')
-    expect(prompt).toContain('no preset fault or price profile')
+    expect(prompt).toContain('Do not use preset faults, costs or material weights')
     expect(prompt).not.toContain('drain pump')
   })
   it('retains immediate hazard handling without an offline device profile', () => {

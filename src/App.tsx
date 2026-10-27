@@ -5,7 +5,6 @@ import {
   ArrowLeft,
   ArrowRight,
   ArrowUpRight,
-  BadgeCheck,
   Bookmark,
   BookOpen,
   Check,
@@ -22,7 +21,6 @@ import {
   Laptop,
   Leaf,
   Lightbulb,
-  MapPin,
   Menu,
   Microwave,
   Plus,
@@ -46,26 +44,14 @@ import DeviceIllustration from './components/DeviceIllustration'
 import WebResearchPanel from './components/WebResearchPanel'
 import type { ResearchRequest, ResearchResult } from './lib/research-types'
 import { preparePhotoForAI } from './lib/photo'
-import { formatMoney, getDefaultReplacementCost, getSafetyWarning } from './lib/estimator'
-import {
-  deviceOptions,
-  getDeviceName,
-  getOfflineAssessment,
-  validateDeviceInput,
-} from './lib/device'
+import { getSafetyWarning } from './lib/estimator'
+import { deviceOptions, getDeviceName, validateDeviceInput } from './lib/device'
 import type { DeviceId, DeviceInput } from './lib/device'
-import type { Assessment, Currency } from './lib/estimator'
+import type { Currency } from './lib/estimator'
 import { readSavedEstimates, writeSavedEstimates } from './lib/storage'
 import type { SavedEstimate } from './lib/storage'
-import {
-  buildMapsSearchUrl,
-  buildReplacementSearchUrl,
-  getSuggestedService,
-} from './lib/service-search'
 
 type Page = 'estimate' | 'saved' | 'resources'
-type Detail = 'overview' | 'guide' | 'materials'
-type Result = Assessment
 
 const deviceIcons: Record<DeviceId, LucideIcon> = {
   'washing-machine': WashingMachine,
@@ -112,31 +98,27 @@ function App() {
     image: NonNullable<ResearchRequest['image']>
   } | null>(null)
   const [includePhoto, setIncludePhoto] = useState(false)
-  const [aiMode, setAiMode] = useState(false)
   const [aiRun, setAiRun] = useState(0)
   const [aiResult, setAiResult] = useState<ResearchResult | null>(null)
+  const [aiHistory, setAiHistory] = useState<
+    { title: string; question?: string; result: ResearchResult }[]
+  >([])
   const [photoError, setPhotoError] = useState('')
   const [dragging, setDragging] = useState(false)
   const [formError, setFormError] = useState('')
   const [assessment, setAssessment] = useState<{
     input: DeviceInput
-    result: Result | null
   } | null>(null)
-  const [detail, setDetail] = useState<Detail>('overview')
   const [saved, setSaved] = useState<SavedEstimate[]>(readSavedEstimates)
   const [savedId, setSavedId] = useState<string | null>(null)
   const [notice, setNotice] = useState('')
   const [location, setLocation] = useState('')
-  const [shopError, setShopError] = useState('')
   const fileInput = useRef<HTMLInputElement>(null)
   const photoRequest = useRef(0)
   const howDialog = useRef<HTMLDialogElement>(null)
   const contentHeading = useRef<HTMLHeadingElement>(null)
   const device = deviceOptions.find((item) => item.id === appliance)!
-  const offline = assessment?.result
-  const safetyWarning = assessment
-    ? (offline?.safetyWarning ?? getSafetyWarning(assessment.input.symptoms))
-    : null
+  const safetyWarning = assessment ? getSafetyWarning(assessment.input.symptoms) : null
   const displayDeviceName = appliance === 'other' ? deviceName.trim() || 'Your device' : device.name
 
   useEffect(
@@ -164,7 +146,6 @@ function App() {
   function newAssessment() {
     setAssessment(null)
     setSavedId(null)
-    setDetail('overview')
     setSymptoms('')
     setBrandModel('')
     setDeviceName('')
@@ -173,6 +154,7 @@ function App() {
     setPhoto(null)
     setIncludePhoto(false)
     setAiResult(null)
+    setAiHistory([])
     setPhotoError('')
     setFormError('')
     setReplacementCost('')
@@ -213,18 +195,11 @@ function App() {
   function assess(details: DeviceInput, withAI = false) {
     try {
       const input = validateDeviceInput(details)
-      const result = getOfflineAssessment(input)
-      setAssessment({ input, result })
-      setRepairService(
-        getSuggestedService(
-          input,
-          withAI && result ? { ...result, recommendation: 'inspect' } : result,
-        ),
-      )
-      setAiMode(withAI || input.appliance === 'other')
+      setAssessment({ input })
+      setRepairService(`${getDeviceName(input).toLowerCase()} repair`)
+      setAiHistory([])
       setAiRun((previous) => (withAI ? previous + 1 : 0))
       setAiResult(null)
-      setDetail('overview')
       setFormError('')
       setSavedId(null)
       navigate('estimate')
@@ -242,8 +217,6 @@ function App() {
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    const withAI =
-      (event.nativeEvent as SubmitEvent).submitter?.getAttribute('data-mode') !== 'estimate'
     assess(
       {
         appliance,
@@ -253,7 +226,7 @@ function App() {
         symptoms: symptoms.trim(),
         ...(replacementCost.trim() ? { replacementCost: Number(replacementCost) } : {}),
       },
-      withAI,
+      true,
     )
   }
 
@@ -267,7 +240,11 @@ function App() {
     photoRequest.current++
     setPhoto(null)
     setPhotoError('')
-    assess({ appliance: 'washing-machine', age: 4, symptoms: example, currency })
+    setAssessment(null)
+    setIncludePhoto(false)
+    setAiResult(null)
+    setAiHistory([])
+    document.getElementById('assessment-area')?.scrollIntoView({ behavior: 'smooth' })
   }
 
   function saveAssessment() {
@@ -277,6 +254,7 @@ function App() {
       createdAt: new Date().toISOString(),
       input: assessment.input,
       brandModel: brandModel.trim(),
+      location: location.trim(),
     }
     const next = [entry, ...saved].slice(0, 30)
     try {
@@ -303,6 +281,8 @@ function App() {
 
   function openSaved(entry: SavedEstimate) {
     setBrandModel(entry.brandModel ?? '')
+    setLocation(entry.location ?? '')
+    setIncludePhoto(false)
     setAppliance(entry.input.appliance)
     setDeviceName(entry.input.deviceName ?? '')
     setCurrency(entry.input.currency)
@@ -316,101 +296,39 @@ function App() {
   }
 
   function downloadAssessment() {
-    if (!assessment) return
-    const { input, result } = assessment
-    const money = (value: number) => formatMoney(value, input.currency)
-    let aiText = ''
-    if (aiResult) {
-      let cursor = 0
-      aiResult.citations.forEach((citation, index) => {
-        aiText += aiResult.text.slice(cursor, citation.start) + `[${index + 1}]`
-        cursor = citation.end
-      })
-      aiText += aiResult.text.slice(cursor)
-    }
+    if (!assessment || !aiResult) return
+    const reports: { title: string; question?: string; result: ResearchResult }[] = [
+      { title: 'Your device assessment', result: aiResult },
+      ...aiHistory,
+    ]
     const report = [
-      'SECOND LIFE — Repair vs. recycle estimate',
-      `Created: ${new Date().toLocaleDateString()}`,
-      `Device: ${getDeviceName(input)}`,
-      ...(brandModel.trim() ? [`Brand and model: ${brandModel.trim()}`] : []),
-      `Age: ${input.age} years`,
-      `Symptoms: ${input.symptoms}`,
-      '',
-      ...(aiResult
-        ? [
-            aiResult.evidence === 'model-only'
-              ? 'AI REPAIR GUIDANCE — NO WEB CHECK'
-              : 'AI REPAIR ASSESSMENT',
-            `Provider: ${aiResult.provider === 'gemini' ? 'Google Gemini' : aiResult.provider === 'groq' ? 'Groq' : aiResult.provider === 'openai' ? 'OpenAI' : 'Not specified'}`,
-            `${aiResult.evidence === 'model-only' ? 'Guidance generated' : 'Sources checked'}: ${aiResult.checkedAt}`,
-            `Photo shared for analysis: ${aiResult.photoIncluded ? 'Yes' : 'No'}`,
-            ...(aiResult.evidence === 'model-only'
-              ? [
-                  'This AI guidance has not been checked against current web sources. Likely causes are unconfirmed. No current repair or replacement price has been verified.',
-                ]
-              : []),
-            aiText,
-            '',
-            ...(aiResult.citations.length ? ['SOURCES'] : []),
-            ...aiResult.citations.map(
-              (citation, index) => `[${index + 1}] ${citation.title}: ${citation.url}`,
-            ),
-            '',
-          ]
-        : []),
-      ...(result
-        ? [
-            'OFFLINE PLANNING ESTIMATE — UNVERIFIED',
-            `Recommendation: ${result.headline}`,
-            `Possible cause: ${result.fault}`,
-            result.explanation,
-            `Unverified repair allowance: ${money(result.repairCost.low)}–${money(result.repairCost.high)}`,
-            `Whole-device replacement budget (${result.replacementCostSource}): ${money(result.replacementCost)}`,
-            `Potential material value: ${money(result.recyclingValue.low)}–${money(result.recyclingValue.high)}`,
-            ...(result.safetyWarning ? ['', `Safety: ${result.safetyWarning}`] : []),
-            '',
-            'NEXT STEPS',
-            ...result.guide.map(
-              (step, index) => `${index + 1}. ${step.title}\n${step.description}`,
-            ),
-            '',
-            'MATERIAL ASSUMPTIONS',
-            ...result.materials.map(
-              (material) =>
-                `${material.name}: ${material.weightKg} kg, indicative value ${money(material.value)}`,
-            ),
-            '',
-          ]
-        : [
-            'No preset cost, lifespan or material-weight estimate is available for this device.',
-            'Repair and replacement comparisons require sourced prices or an entered replacement budget.',
-            ...(getSafetyWarning(input.symptoms)
-              ? [`Safety: ${getSafetyWarning(input.symptoms)}`]
-              : []),
-          ]),
-      'The offline calculation uses symptom rules and illustrative costs, not verified shop quotes. AI assessments use the supplied details and any available cited sources but may be wrong. Guidance without a web check is labelled above. Photos are shared only when selected for AI analysis and are not included in this report. Recycler fees and recovery rates affect actual payouts.',
+      'SECOND LIFE — Device repair passport',
+      `Device: ${getDeviceName(assessment.input)}`,
+      `Brand/model: ${brandModel || 'Not supplied'}`,
+      `Symptoms: ${assessment.input.symptoms}`,
+      `Location: ${location || 'Not supplied'}`,
+      ...reports.flatMap(({ title, question, result }) => [
+        '',
+        title.toUpperCase(),
+        ...(question ? [`Your input: ${question}`] : []),
+        `Provider: ${result.provider ?? 'Not specified'}`,
+        `Generated: ${result.checkedAt}`,
+        result.evidence === 'model-only'
+          ? 'AI guidance — no web check. Prices and material quantities remain unverified.'
+          : 'Based on API search evidence; prices and faults are not confirmed shop quotes or measurements.',
+        `Photo shared for analysis: ${result.photoIncluded ? 'Yes' : 'No'}`,
+        result.text,
+        ...result.citations.map(
+          (citation, index) => `[${index + 1}] ${citation.title}: ${citation.url}`,
+        ),
+      ]),
     ].join('\n')
     const url = URL.createObjectURL(new Blob([report], { type: 'text/plain;charset=utf-8' }))
     const link = document.createElement('a')
     link.href = url
-    link.download = `second-life-${input.appliance}-estimate.txt`
+    link.download = `second-life-${assessment.input.appliance}-passport.txt`
     link.click()
     window.setTimeout(() => URL.revokeObjectURL(url), 1000)
-  }
-
-  function findShops(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    if (!location.trim()) {
-      setShopError('Enter your city or postcode to find nearby options.')
-      return
-    }
-    setShopError('')
-    try {
-      const url = buildMapsSearchUrl(repairService, location)
-      window.open(url, '_blank', 'noopener,noreferrer')
-    } catch (error) {
-      setShopError(error instanceof Error ? error.message : 'Check the service and location.')
-    }
   }
 
   return (
@@ -811,11 +729,7 @@ function App() {
                                 type="number"
                                 min="1"
                                 max="10000000"
-                                placeholder={
-                                  appliance === 'other'
-                                    ? 'Price if known'
-                                    : String(getDefaultReplacementCost(appliance, currency))
-                                }
+                                placeholder="Price if known"
                                 value={replacementCost}
                                 onChange={(event) => setReplacementCost(event.target.value)}
                                 aria-describedby="budget-hint"
@@ -825,9 +739,7 @@ function App() {
                         </div>
                         <p id="budget-hint" className="budget-note">
                           Enter the current price of an equivalent new device, not the faulty part.{' '}
-                          {appliance === 'other'
-                            ? 'Leave blank for AI to look for a sourced replacement price.'
-                            : 'Leave blank to use an illustrative category default in offline mode.'}
+                          Leave blank for AI to look for a sourced replacement price.
                         </p>
                         <div className="field">
                           <label htmlFor="initial-location">
@@ -866,15 +778,6 @@ function App() {
                           <button className="button button-primary" type="submit" data-mode="ai">
                             Analyze with AI <ArrowRight size={17} />
                           </button>
-                          {appliance !== 'other' && (
-                            <button
-                              className="button button-secondary"
-                              type="submit"
-                              data-mode="estimate"
-                            >
-                              Explore my options <ArrowRight size={17} />
-                            </button>
-                          )}
                         </div>
                         {formError && (
                           <p className="field-error" role="alert">
@@ -884,30 +787,15 @@ function App() {
                         <p className="estimate-disclaimer">
                           <Info size={13} /> Analyze with AI sends your device details and symptoms
                           to the configured AI provider. Web research may send a text search query
-                          to Tavily; photos go only to the AI provider when you opt in.{' '}
-                          {appliance !== 'other' &&
-                            '“Explore my options” uses the offline checklist. '}
-                          AI can suggest likely causes, but cannot measure internal faults.
+                          to Tavily; photos go only to the AI provider when you opt in. AI can
+                          suggest likely causes, but cannot measure internal faults.
                         </p>
                       </form>
                     ) : (
                       <div className="results">
                         <div className="result-topline">
-                          <span
-                            className={`recommendation-tag ${offline?.recommendation ?? 'inspect'}`}
-                          >
-                            {aiMode || !offline ? (
-                              <BookOpen size={14} />
-                            ) : (
-                              <ResultIcon result={offline} />
-                            )}
-                            {aiMode
-                              ? 'AI REPAIR ASSESSMENT'
-                              : offline?.recommendation === 'repair'
-                                ? 'REPAIR LOOKS PROMISING'
-                                : offline?.recommendation === 'recycle'
-                                  ? 'CONSIDER RESPONSIBLE RECYCLING'
-                                  : 'GET A PROFESSIONAL OPINION'}
+                          <span className="recommendation-tag inspect">
+                            <BookOpen size={14} /> YOUR AI DEVICE REPORT
                           </span>
                           <button
                             className="text-button"
@@ -950,7 +838,9 @@ function App() {
                           autoStartToken={aiRun}
                           onAutoStart={() => setAiRun(0)}
                           onResult={setAiResult}
+                          onHistory={setAiHistory}
                           request={{
+                            task: 'assessment',
                             appliance: assessment.input.appliance,
                             ...(assessment.input.deviceName
                               ? { deviceName: assessment.input.deviceName }
@@ -967,270 +857,6 @@ function App() {
                             ...(includePhoto && photo ? { image: photo.image } : {}),
                           }}
                         />
-                        {offline ? (
-                          <PlanningDetails collapsed={aiMode}>
-                            <h3 className="result-headline">{offline.headline}</h3>
-                            <p className="result-intro">{offline.summary}</p>
-                            <div className="result-tabs" aria-label="Estimate details">
-                              {(
-                                [
-                                  { key: 'overview', label: 'Your estimate' },
-                                  { key: 'guide', label: 'Repair guidance' },
-                                  { key: 'materials', label: 'Recycling value' },
-                                ] as const
-                              ).map((tab) => (
-                                <button
-                                  key={tab.key}
-                                  onClick={() => setDetail(tab.key)}
-                                  aria-pressed={detail === tab.key}
-                                  className={detail === tab.key ? 'active' : ''}
-                                >
-                                  {tab.label}
-                                </button>
-                              ))}
-                            </div>
-                            {detail === 'overview' && (
-                              <div className="result-panel">
-                                <div className="fault-box">
-                                  <Wrench size={18} />
-                                  <div>
-                                    <span>
-                                      {offline.matched ? 'POSSIBLE CAUSE' : 'NEXT DIAGNOSTIC STEP'}
-                                    </span>
-                                    <strong>{offline.fault}</strong>
-                                  </div>
-                                </div>
-                                <section
-                                  className="quick-solution"
-                                  aria-labelledby="quick-solution-title"
-                                >
-                                  <h4 id="quick-solution-title">What to do now</h4>
-                                  <strong>
-                                    {
-                                      offline.guide[offline.repairCostBasis === 'safety' ? 0 : 1]
-                                        .title
-                                    }
-                                  </strong>
-                                  <p>
-                                    {
-                                      offline.guide[offline.repairCostBasis === 'safety' ? 0 : 1]
-                                        .description
-                                    }
-                                  </p>
-                                  <p className="solution-next">
-                                    <strong>Then:</strong>{' '}
-                                    {offline.repairCostBasis === 'safety'
-                                      ? 'Tell a qualified service provider about the hazard and follow their handling advice.'
-                                      : 'Check published prices below, then ask a repairer to confirm the fault and the full cost before ordering parts.'}
-                                  </p>
-                                </section>
-                                <div className="cost-comparison">
-                                  <div className="cost-card repair-cost">
-                                    <Wrench size={18} />
-                                    <span>Unverified repair allowance</span>
-                                    <strong>
-                                      {formatMoney(
-                                        offline.repairCost.low,
-                                        assessment.input.currency,
-                                      )}
-                                      <span>
-                                        –
-                                        {formatMoney(
-                                          offline.repairCost.high,
-                                          assessment.input.currency,
-                                        )}
-                                      </span>
-                                    </strong>
-                                    <small>
-                                      {offline.repairCostBasis === 'symptom'
-                                        ? 'Symptom-based parts + labour assumption'
-                                        : offline.repairCostBasis === 'multiple'
-                                          ? 'Range across possible repairs; not a combined bill'
-                                          : 'Broad allowance; diagnosis and quote needed'}
-                                    </small>
-                                    <a className="cost-source-link" href="#web-research-title">
-                                      Check against web sources
-                                    </a>
-                                  </div>
-                                  <div className="cost-card">
-                                    <Recycle size={19} />
-                                    <span>Estimated scrap payout</span>
-                                    <strong>
-                                      {formatMoney(
-                                        offline.recyclingValue.low,
-                                        assessment.input.currency,
-                                      )}
-                                      <span>
-                                        –
-                                        {formatMoney(
-                                          offline.recyclingValue.high,
-                                          assessment.input.currency,
-                                        )}
-                                      </span>
-                                    </strong>
-                                    <small>
-                                      Material recovery, before fees; not a replacement price
-                                    </small>
-                                  </div>
-                                </div>
-                                {offline.repairOptions.length > 1 && (
-                                  <details className="repair-options">
-                                    <summary>See the possible repair costs</summary>
-                                    <ul>
-                                      {offline.repairOptions.map((option) => (
-                                        <li key={option.fault}>
-                                          <span>{option.fault}</span>
-                                          <strong>
-                                            {formatMoney(option.low, assessment.input.currency)}–
-                                            {formatMoney(option.high, assessment.input.currency)}
-                                          </strong>
-                                        </li>
-                                      ))}
-                                    </ul>
-                                    <p>
-                                      These are alternative planning scenarios, not prices verified
-                                      on the web. Inspection may find one cause or multiple repairs.
-                                    </p>
-                                  </details>
-                                )}
-                                <div className="replacement-line">
-                                  <span>Whole-device replacement budget</span>
-                                  <strong>
-                                    {formatMoney(
-                                      offline.replacementCost,
-                                      assessment.input.currency,
-                                    )}
-                                  </strong>
-                                </div>
-                                <p className="cost-basis-note">
-                                  {offline.replacementCostSource === 'entered'
-                                    ? 'Using the replacement price you entered.'
-                                    : `Using an illustrative ${device.name.toLowerCase()} price; the exact model has not been priced.`}{' '}
-                                  A new-device price stays the same across faults. Scrap value also
-                                  stays similar because it uses the device’s materials.
-                                </p>
-                                <a
-                                  className="cost-source-link"
-                                  href={buildReplacementSearchUrl(
-                                    assessment.input.appliance,
-                                    brandModel,
-                                    assessment.input.currency,
-                                  )}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                >
-                                  Look up a new-device price <ArrowUpRight size={13} />
-                                </a>
-                                {offline.recommendation === 'repair' &&
-                                  offline.remainingYears > 0 && (
-                                    <div className="life-note">
-                                      <Sprout size={19} />
-                                      <span>
-                                        A successful repair could keep it useful for around{' '}
-                                        <strong>
-                                          {offline.remainingYears} more{' '}
-                                          {offline.remainingYears === 1 ? 'year' : 'years'}
-                                        </strong>
-                                        , based on typical lifespan.
-                                      </span>
-                                    </div>
-                                  )}
-                                <p className="result-footnote">
-                                  Planning ranges, not a confirmed diagnosis or shop quote. Prices
-                                  depend on your model, location, and inspection. Material values
-                                  use illustrative recovery assumptions.
-                                </p>
-                              </div>
-                            )}
-                            {detail === 'guide' && (
-                              <div className="result-panel guide-panel">
-                                <div className="panel-intro">
-                                  <h4>A safe place to start</h4>
-                                  <p>
-                                    Follow your manufacturer’s manual. Internal electrical repairs
-                                    belong with a qualified technician.
-                                  </p>
-                                </div>
-                                <ol className="guide-list">
-                                  {offline.guide.map((step, index) => (
-                                    <li key={step.title}>
-                                      <span>{String(index + 1).padStart(2, '0')}</span>
-                                      <div>
-                                        <h4>{step.title}</h4>
-                                        <p>{step.description}</p>
-                                      </div>
-                                    </li>
-                                  ))}
-                                </ol>
-                                <a
-                                  className="resource-link"
-                                  href={`https://www.ifixit.com/Search?query=${encodeURIComponent(device.name)}`}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                >
-                                  Look up model-specific repair guides <ArrowUpRight size={16} />
-                                </a>
-                              </div>
-                            )}
-                            {detail === 'materials' && (
-                              <div className="result-panel">
-                                <div className="panel-intro">
-                                  <h4>There’s value in what’s inside.</h4>
-                                  <p>
-                                    Estimated recoverable materials for a typical{' '}
-                                    {device.name.toLowerCase()}. Your exact model and local recovery
-                                    rates will vary.
-                                  </p>
-                                </div>
-                                <div className="material-table">
-                                  <div className="material-row table-heading">
-                                    <span>Material</span>
-                                    <span>Est. weight</span>
-                                    <span>Est. value</span>
-                                  </div>
-                                  {offline.materials.map((material) => (
-                                    <div className="material-row" key={material.name}>
-                                      <span>
-                                        <i />
-                                        {material.name}
-                                      </span>
-                                      <span>
-                                        {material.weightKg.toLocaleString(undefined, {
-                                          maximumFractionDigits: 3,
-                                        })}{' '}
-                                        kg
-                                      </span>
-                                      <strong>
-                                        {formatMoney(material.value, assessment.input.currency)}
-                                      </strong>
-                                    </div>
-                                  ))}
-                                </div>
-                                <div className="recycling-note">
-                                  <Recycle size={18} />
-                                  <p>
-                                    Let an authorized recycler recover these materials. Collection
-                                    and processing fees can reduce the payout. Don’t dismantle
-                                    hazardous components yourself.
-                                  </p>
-                                </div>
-                              </div>
-                            )}
-                          </PlanningDetails>
-                        ) : (
-                          <div className="custom-device-note">
-                            <h4>Prices for your device</h4>
-                            <p>
-                              The AI assessment uses your device name, condition, and any photo you
-                              choose to share. Repair and replacement calculations use cited prices;
-                              no generic appliance estimate is substituted.
-                            </p>
-                            <p>
-                              Material weights and recycling payouts need device-specific
-                              information from a recycler.
-                            </p>
-                          </div>
-                        )}
                         <div className="result-actions">
                           <button
                             className="button button-primary"
@@ -1240,7 +866,11 @@ function App() {
                             {savedId ? <Check size={16} /> : <Bookmark size={16} />}
                             {savedId ? 'Estimate saved' : 'Save estimate'}
                           </button>
-                          <button className="button button-secondary" onClick={downloadAssessment}>
+                          <button
+                            className="button button-secondary"
+                            onClick={downloadAssessment}
+                            disabled={!aiResult}
+                          >
                             <ArrowDownToLine size={16} /> Download
                           </button>
                         </div>
@@ -1250,89 +880,32 @@ function App() {
 
                   <aside className="assessment-aside" aria-label="Assessment help">
                     {assessment ? (
-                      <>
-                        <div className="next-step-card">
-                          <div className="aside-kicker">
-                            <MapPin size={17} /> YOUR NEXT STEP
-                          </div>
-                          <h3>
-                            {!aiMode && offline?.recommendation === 'recycle'
-                              ? 'Find a responsible recycler.'
-                              : 'Nearby repair options.'}
-                          </h3>
-                          <p>
-                            {!aiMode && offline?.recommendation === 'recycle'
-                              ? 'Find a nearby collection point and ask about accepted devices and processing fees.'
-                              : 'Search for nearby services related to the suspected component. Edit the service if you have a more specific diagnosis.'}
-                          </p>
-                          <form onSubmit={findShops}>
-                            <label htmlFor="repair-service">Service to look for</label>
-                            <div className="location-input service-input">
-                              <Wrench size={16} />
-                              <input
-                                id="repair-service"
-                                value={repairService}
-                                maxLength={120}
-                                onChange={(event) => {
-                                  setRepairService(event.target.value)
-                                  setShopError('')
-                                }}
-                                aria-describedby="service-hint"
-                              />
-                            </div>
-                            <p id="service-hint" className="service-hint">
-                              Suggested from symptoms; this component hasn’t been confirmed.
-                            </p>
-                            <label htmlFor="location">City or postcode</label>
-                            <div className="location-input">
-                              <MapPin size={16} />
-                              <input
-                                id="location"
-                                placeholder={
-                                  currency === 'INR'
-                                    ? 'e.g. Bengaluru, 560001'
-                                    : 'e.g. Austin, 78701'
-                                }
-                                value={location}
-                                onChange={(event) => {
-                                  setLocation(event.target.value)
-                                  setShopError('')
-                                }}
-                                maxLength={120}
-                              />
-                            </div>
-                            {shopError && (
-                              <p className="field-error" role="alert">
-                                {shopError}
-                              </p>
-                            )}
-                            <button className="button button-primary" type="submit">
-                              Find{' '}
-                              {!aiMode && offline?.recommendation === 'recycle'
-                                ? 'recyclers'
-                                : 'repair shops'}
-                              <ArrowUpRight size={16} />
-                            </button>
-                          </form>
-                          <small>
-                            Opens a targeted Google Maps search. Call to confirm that a shop handles
-                            this component and ask for its final price.
-                          </small>
-                        </div>
-                        <div className="quote-checklist">
-                          <h4>A few things to ask</h4>
-                          {[
-                            'Do you repair this component and model?',
-                            'Does the quote include parts and labor?',
-                            'Is there a warranty on the repair?',
-                          ].map((text) => (
-                            <p key={text}>
-                              <Check size={15} />
-                              {text}
-                            </p>
-                          ))}
-                        </div>
-                      </>
+                      <div className="promise-card">
+                        <span className="promise-icon">
+                          <Sprout size={30} />
+                        </span>
+                        <div className="eyebrow">YOUR DEVICE, ONE REPORT</div>
+                        <h3>Clarity before a decision.</h3>
+                        <p>
+                          Your assessment connects the likely cause, remedies, published costs,
+                          nearby listings and recycling evidence.
+                        </p>
+                        <Feature
+                          icon={CircleHelp}
+                          title="Ask a follow-up"
+                          text="Add a new observation and ask AI what changes."
+                        />
+                        <Feature
+                          icon={Wrench}
+                          title="Review a quote"
+                          text="Ask AI to explain a repairer's charges and missing details."
+                        />
+                        <Feature
+                          icon={BookOpen}
+                          title="Build a repair passport"
+                          text="Create a tailored shop brief and download your conversation."
+                        />
+                      </div>
                     ) : (
                       <>
                         <div className="promise-card">
@@ -1444,7 +1017,6 @@ function App() {
                   {saved.map((entry) => {
                     const name = getDeviceName(entry.input)
                     const Icon = deviceIcons[entry.input.appliance]
-                    const result = getOfflineAssessment(entry.input)
                     return (
                       <article className="saved-card" key={entry.id}>
                         <span className="saved-device-icon">
@@ -1461,9 +1033,7 @@ function App() {
                           <h2>{name}</h2>
                           <p>{entry.input.symptoms}</p>
                           <span className="saved-price">
-                            {result
-                              ? `Repair: ${formatMoney(result.repairCost.low, entry.input.currency)}–${formatMoney(result.repairCost.high, entry.input.currency)}`
-                              : 'AI assessment · Research prices for this device'}
+                            Device details saved · Run AI for a fresh assessment
                           </span>
                         </div>
                         <div className="saved-card-actions">
@@ -1552,16 +1122,16 @@ function App() {
               <div className="data-note">
                 <h2>How our estimates work</h2>
                 <p>
-                  Second Life matches the symptoms you enter to common faults, then combines
-                  illustrative repair costs, typical lifespans, and material recovery assumptions.
-                  Age and your replacement budget help suggest a next step. INR and USD use separate
-                  illustrative price profiles. They are not converted using live exchange rates.
+                  Second Life sends your details to the selected AI provider. The report uses API
+                  responses and available search evidence. It adds no preset faults, repair prices,
+                  material weights or assumed recycling payouts. A photo cannot establish the mass
+                  or condition of internal materials.
                 </p>
                 <p>
-                  The offline checklist is separate from the AI assessment. AI uses your symptoms,
-                  optional photo, and available sources to explain likely causes, checks, remedies,
-                  and repair-versus-replace choices. It cannot measure internal faults or guarantee
-                  a diagnosis. Photos are never included in saved estimates.
+                  AI uses your symptoms, optional photo, and available sources to explain likely
+                  causes, checks, remedies, and repair-versus-replace choices. It cannot measure
+                  internal faults or guarantee a diagnosis. Photos are never included in saved
+                  estimates.
                 </p>
                 <p>
                   Web research looks for published guidance and prices for your model, symptoms,
@@ -1569,7 +1139,7 @@ function App() {
                   date. Groq can also provide clearly labelled guidance without a web check; current
                   prices remain unverified in that mode. Published prices may have conditions;
                   confirm the final charge with a repairer. Google Maps searches use the suggested
-                  component or service, which you can edit.
+                  component or service suggested by the AI.
                 </p>
               </div>
             </section>
@@ -1626,9 +1196,9 @@ function App() {
             <p>
               Analyze with AI uses OpenAI, Gemini, or Groq, your symptoms, and available sources.
               Groq guidance without a web check is labelled, with current prices left unverified.
-              Photos are analyzed only when you choose to include them. The offline checklist uses
-              illustrative prices. Shop search opens Google Maps for the selected service. Published
-              component prices are kept separate from complete repair costs.
+              Photos are analyzed only when you choose to include them. No preset prices or material
+              weights are substituted. Shop search opens Google Maps for the selected service.
+              Published component prices are kept separate from complete repair costs.
             </p>
           </div>
           <button
@@ -1719,26 +1289,6 @@ function ResourceCard({
         <ExternalLink size={15} />
       </a>
     </article>
-  )
-}
-
-function ResultIcon({ result }: { result: Result }) {
-  const Icon =
-    result.recommendation === 'repair'
-      ? BadgeCheck
-      : result.recommendation === 'recycle'
-        ? Recycle
-        : Search
-  return <Icon size={14} />
-}
-
-function PlanningDetails({ collapsed, children }: { collapsed: boolean; children: ReactNode }) {
-  if (!collapsed) return <>{children}</>
-  return (
-    <details className="planning-details">
-      <summary>Offline planning estimate and material assumptions</summary>
-      {children}
-    </details>
   )
 }
 

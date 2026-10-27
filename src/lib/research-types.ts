@@ -2,6 +2,8 @@ import type { Currency } from './estimator'
 import type { DeviceId } from './device'
 
 export type ResearchProvider = 'openai' | 'gemini' | 'groq'
+export type AssessmentTask =
+  'assessment' | 'follow-up' | 'comparison' | 'quote-review' | 'repair-brief'
 
 export interface ResearchRequest {
   appliance: DeviceId
@@ -14,6 +16,9 @@ export interface ResearchRequest {
   service: string
   image?: { mimeType: 'image/jpeg' | 'image/png' | 'image/webp'; data: string }
   replacementCost?: number
+  task?: AssessmentTask
+  question?: string
+  previousAssessment?: string
 }
 
 export interface ResearchCitation {
@@ -36,11 +41,31 @@ export interface ResearchResult {
   }
   model?: string
   photoIncluded?: boolean
+  repairService?: string
+  shops?: ResearchShop[]
+  materials?: ResearchMaterial[]
   searchSuggestionsHtml?: string
   priceCheck?: {
     status: 'checked' | 'unavailable'
     items: PublishedPrice[]
   }
+}
+
+export interface ResearchShop {
+  name: string
+  address: string
+  sourceUrl: string
+  sourceTitle: string
+}
+
+export interface ResearchMaterial {
+  name: string
+  excerpt: string
+  weightKg: number | null
+  ratePerKg: number | null
+  currency: Currency
+  sourceUrl: string
+  sourceTitle: string
 }
 
 export interface PublishedPrice {

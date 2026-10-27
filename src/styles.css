@@ -3371,3 +3371,136 @@ main {
 .saved-card h2 {
   overflow-wrap: anywhere;
 }
+
+/* A single evidence-led report, with API actions kept in the same reading flow. */
+.unified-report .research-answer {
+  white-space: normal;
+}
+.unified-report .research-answer h5,
+.unified-report h5 {
+  margin: 1.6rem 0 0.65rem;
+  color: var(--green-dark, #224d3b);
+  font-size: 1.08rem;
+  font-weight: 650;
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+.unified-report .research-answer p {
+  white-space: pre-wrap;
+  margin: 0 0 1rem;
+  line-height: 1.8;
+  overflow-wrap: anywhere;
+}
+.report-evidence,
+.manual-search {
+  margin-top: 1.4rem;
+  border-top: 1px solid #dce3d1;
+  padding-top: 1rem;
+}
+.report-evidence summary,
+.manual-search summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: #315c45;
+}
+.report-shops {
+  border-top: 1px solid #dce3d1;
+  margin-top: 1.4rem;
+}
+.report-shops ul {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+.report-shops li {
+  display: grid;
+  gap: 0.45rem;
+  padding: 1rem;
+  border: 1px solid #dce3d1;
+  border-radius: 12px;
+  background: #f7f9f3;
+}
+.report-shops a {
+  color: #24583c;
+  overflow-wrap: anywhere;
+}
+.ai-next-actions {
+  border-top: 1px solid #dce3d1;
+  margin-top: 1.5rem;
+}
+.ai-action-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem;
+  margin: 1rem 0;
+}
+.ai-action-grid button {
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+  gap: 0.4rem;
+  padding: 0.9rem;
+  border: 1px solid #ccd8c5;
+  border-radius: 10px;
+  color: #31543c;
+  background: #fff;
+  cursor: pointer;
+}
+.ai-action-grid button[aria-pressed='true'] {
+  border-color: #365f43;
+  background: #edf3e5;
+  box-shadow: inset 0 0 0 1px #365f43;
+}
+.ai-action-grid span {
+  color: #535e4e;
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+.ai-next-actions form {
+  display: grid;
+  gap: 0.7rem;
+}
+.ai-next-actions label {
+  color: #304a38;
+  font-weight: 600;
+}
+.ai-next-actions textarea {
+  width: 100%;
+  padding: 0.8rem;
+  border: 1px solid #c8d4bf;
+  border-radius: 10px;
+  resize: vertical;
+  font: inherit;
+  line-height: 1.6;
+  background: #fff;
+  color: #263c2d;
+}
+.ai-next-actions form button {
+  justify-self: start;
+}
+.ai-conversation {
+  border-top: 2px solid #dce3d1;
+  margin-top: 1.6rem;
+}
+.user-observation {
+  background: #f0f4ea;
+  border-left: 3px solid #749054;
+  padding: 0.9rem;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.ai-action-grid button:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+@media (max-width: 600px) {
+  .ai-action-grid {
+    grid-template-columns: 1fr;
+  }
+  .report-shops .button {
+    width: 100%;
+    white-space: normal;
+  }
+}

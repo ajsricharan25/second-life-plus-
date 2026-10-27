@@ -608,6 +608,61 @@ describe('Groq HTTP integration', () => {
   })
 })
 
+describe('unified task routing', () => {
+  it.each(['gemini', 'openai'] as const)(
+    'routes a %s assessment to the one-call JSON workflow without a preset hypothesis',
+    async (provider) => {
+      const content = JSON.stringify({
+        sections: [
+          {
+            heading: 'Summary',
+            text: 'The cause is unconfirmed. Inspect the accessible external hose.',
+            sourceIds: [],
+          },
+        ],
+        prices: [],
+        materials: [],
+        shops: [],
+      })
+      const completion =
+        provider === 'gemini'
+          ? { candidates: [{ finishReason: 'STOP', content: { parts: [{ text: content }] } }] }
+          : {
+              status: 'completed',
+              output: [
+                {
+                  type: 'message',
+                  role: 'assistant',
+                  status: 'completed',
+                  content: [{ type: 'output_text', text: content }],
+                },
+              ],
+            }
+      const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json(completion))
+      const result = await callHandler(
+        createResearchHandler({
+          env: {
+            REPAIR_AI_PROVIDER: provider,
+            GEMINI_API_KEY: 'fixture-key',
+            OPENAI_API_KEY: 'fixture-key',
+          },
+          fetcher,
+        }),
+        { preParsed: { ...input, task: 'assessment' } },
+      )
+      expect(result.status).toBe(200)
+      expect(result.body).toMatchObject({
+        provider,
+        evidence: 'model-only',
+        materials: [],
+        shops: [],
+      })
+      expect(fetcher).toHaveBeenCalledTimes(1)
+      expect(fetcher.mock.calls[0][1]!.body).not.toContain('checklistHypothesis')
+    },
+  )
+})
+
 function geminiProviderResult() {
   const text = 'Example washer 100 spare part: ₹500, parts-only, excluding labour.'
   return {
@@ -1052,7 +1107,6 @@ describe('other-device AI research', () => {
         brandModel: 'Example AP100',
         location: 'Chennai',
         replacementCost: 22000,
-        checklistHypothesis: null,
       })
       expect(details).not.toHaveProperty('repairCost')
       expect(details).not.toHaveProperty('materials')
@@ -1093,6 +1147,6 @@ describe('other-device AI research', () => {
     })
     const body = JSON.parse(fetcher.mock.calls[0][1]!.body as string)
     expect(body.input).toContain('Stop using and charging')
-    expect(body.input).toContain('"checklistHypothesis":null')
+    expect(body.input).not.toContain('checklistHypothesis')
   })
 })

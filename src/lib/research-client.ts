@@ -1,4 +1,5 @@
 import type { ResearchResult } from './research-types'
+import { buildShopMapsUrl } from './service-search'
 
 export function parseResearchResult(value: unknown): ResearchResult {
   if (!value || typeof value !== 'object') throw new Error('Invalid research response')
@@ -29,7 +30,7 @@ export function parseResearchResult(value: unknown): ResearchResult {
     throw new Error('Invalid provider metadata')
   if (
     modelOnly &&
-    (data.provider !== 'groq' ||
+    (!data.provider ||
       data.citations.length !== 0 ||
       data.priceCheck?.status !== 'unavailable' ||
       !Array.isArray(data.priceCheck.items) ||
@@ -39,12 +40,73 @@ export function parseResearchResult(value: unknown): ResearchResult {
   if (
     data.webSearch !== undefined &&
     (!data.webSearch ||
-      data.provider !== 'groq' ||
+      !data.provider ||
       data.webSearch.provider !== 'tavily' ||
       !['used', 'not-configured', 'unavailable'].includes(data.webSearch.status) ||
       (modelOnly ? data.webSearch.status === 'used' : data.webSearch.status !== 'used'))
   )
     throw new Error('Invalid web search metadata')
+  if (
+    data.repairService !== undefined &&
+    (typeof data.repairService !== 'string' ||
+      data.repairService.length < 3 ||
+      data.repairService.length > 100 ||
+      /[\u0000-\u001f<>]/u.test(data.repairService))
+  )
+    throw new Error('Invalid service suggestion')
+  const hasSource = (item: { sourceUrl: string; sourceTitle: string }) =>
+    data.citations!.some(
+      (citation) => citation.url === item.sourceUrl && citation.title === item.sourceTitle,
+    )
+  if (data.shops !== undefined) {
+    if (!Array.isArray(data.shops) || data.shops.length > 4 || (modelOnly && data.shops.length > 0))
+      throw new Error('Invalid shop evidence')
+    for (const shop of data.shops) {
+      if (
+        !shop ||
+        typeof shop.name !== 'string' ||
+        shop.name.length < 3 ||
+        shop.name.length > 120 ||
+        typeof shop.address !== 'string' ||
+        shop.address.length < 8 ||
+        shop.address.length > 240 ||
+        !hasSource(shop) ||
+        !data.text.includes(shop.name) ||
+        !data.text.includes(shop.address)
+      )
+        throw new Error('Invalid shop listing')
+      buildShopMapsUrl(shop.name, shop.address)
+    }
+  }
+  if (data.materials !== undefined) {
+    if (
+      !Array.isArray(data.materials) ||
+      data.materials.length > 6 ||
+      (modelOnly && data.materials.length > 0)
+    )
+      throw new Error('Invalid material evidence')
+    for (const material of data.materials)
+      if (
+        !material ||
+        typeof material.name !== 'string' ||
+        material.name.length < 2 ||
+        material.name.length > 60 ||
+        typeof material.excerpt !== 'string' ||
+        material.excerpt.length > 700 ||
+        !data.text.includes(material.excerpt) ||
+        !['INR', 'USD'].includes(material.currency) ||
+        !hasSource(material) ||
+        [material.weightKg, material.ratePerKg].some(
+          (value) =>
+            value !== null &&
+            (typeof value !== 'number' ||
+              !Number.isFinite(value) ||
+              value <= 0 ||
+              value > 100000000),
+        )
+      )
+        throw new Error('Invalid material details')
+  }
   let previousEnd = 0
   for (const citation of data.citations) {
     if (

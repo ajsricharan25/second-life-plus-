@@ -1,4 +1,4 @@
-import { appliances, estimate } from './estimator.ts'
+import { estimate } from './estimator.ts'
 import type { ApplianceId, AssessmentInput } from './estimator.ts'
 
 export type DeviceId = ApplianceId | 'other'
@@ -7,10 +7,58 @@ export interface DeviceInput extends Omit<AssessmentInput, 'appliance'> {
   deviceName?: string
 }
 
-export const deviceOptions = [
-  ...appliances,
+// Form choices only. No category costs, material weights or diagnoses enter AI requests.
+export const deviceOptions: {
+  id: DeviceId
+  name: string
+  shortName: string
+  defaultAge: number
+  symptomSuggestions: string[]
+}[] = [
   {
-    id: 'other' as const,
+    id: 'washing-machine',
+    name: 'Washing machine',
+    shortName: 'Washer',
+    defaultAge: 4,
+    symptomSuggestions: ['Not draining', 'Drum not spinning', 'Leaking water'],
+  },
+  {
+    id: 'refrigerator',
+    name: 'Refrigerator',
+    shortName: 'Fridge',
+    defaultAge: 5,
+    symptomSuggestions: ['Not cooling', 'Ice buildup', 'Leaking water'],
+  },
+  {
+    id: 'laptop',
+    name: 'Laptop',
+    shortName: 'Laptop',
+    defaultAge: 3,
+    symptomSuggestions: ['Battery drains quickly', 'Screen is cracked', 'Running slowly'],
+  },
+  {
+    id: 'smartphone',
+    name: 'Smartphone',
+    shortName: 'Phone',
+    defaultAge: 2,
+    symptomSuggestions: ['Battery drains quickly', 'Screen is cracked', 'Not charging'],
+  },
+  {
+    id: 'television',
+    name: 'Television',
+    shortName: 'TV',
+    defaultAge: 4,
+    symptomSuggestions: ['Sound but no picture', 'Screen is cracked', 'Not turning on'],
+  },
+  {
+    id: 'microwave',
+    name: 'Microwave',
+    shortName: 'Microwave',
+    defaultAge: 3,
+    symptomSuggestions: ['Not heating', 'Turntable not rotating', 'Buttons not working'],
+  },
+  {
+    id: 'other',
     name: 'Other devices',
     shortName: 'Other devices',
     defaultAge: 1,
@@ -31,7 +79,7 @@ export function customDeviceName(value: unknown): string {
 
 export function getDeviceName(input: Pick<DeviceInput, 'appliance' | 'deviceName'>): string {
   if (input.appliance === 'other') return customDeviceName(input.deviceName)
-  const name = appliances.find((item) => item.id === input.appliance)?.name
+  const name = deviceOptions.find((item) => item.id === input.appliance)?.name
   if (!name) throw new Error('Choose a supported device or Other devices.')
   return name
 }

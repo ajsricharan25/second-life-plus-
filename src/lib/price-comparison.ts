@@ -1,5 +1,5 @@
-import type { Currency } from './estimator'
-import type { PublishedPrice, ResearchResult } from './research-types'
+import type { Currency } from './estimator.ts'
+import type { PublishedPrice, ResearchResult } from './research-types.ts'
 
 export function comparePublishedPrices(
   result: ResearchResult,

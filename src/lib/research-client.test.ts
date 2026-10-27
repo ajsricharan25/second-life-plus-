@@ -57,8 +57,6 @@ describe('AI response metadata validation', () => {
   })
 
   it.each([
-    { provider: 'gemini' },
-    { provider: 'openai' },
     { provider: undefined },
     { evidence: undefined },
     { evidence: 'web' },
@@ -102,13 +100,18 @@ describe('AI response metadata validation', () => {
     ).toThrow()
   })
 
-  it('does not attribute Tavily research to another provider', () => {
-    expect(() =>
-      parseResearchResult({
-        ...response,
-        provider: 'gemini',
-        webSearch: { provider: 'tavily', status: 'used' },
-      }),
-    ).toThrow()
-  })
+  it.each(['gemini', 'openai', 'groq'])(
+    'supports the unified evidence contract for %s',
+    (provider) => {
+      expect(parseResearchResult({ ...modelOnly, provider }).provider).toBe(provider)
+      expect(
+        parseResearchResult({
+          ...response,
+          provider,
+          evidence: 'web',
+          webSearch: { provider: 'tavily', status: 'used' },
+        }).provider,
+      ).toBe(provider)
+    },
+  )
 })

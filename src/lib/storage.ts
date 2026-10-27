@@ -5,6 +5,7 @@ export interface SavedEstimate {
   createdAt: string
   input: DeviceInput
   brandModel?: string
+  location?: string
 }
 
 const storageKey = 'second-life-estimates-v1'
@@ -22,7 +23,9 @@ export function readSavedEstimates(): SavedEstimate[] {
             typeof entry.createdAt !== 'string' ||
             !Number.isFinite(Date.parse(entry.createdAt)) ||
             (entry.brandModel !== undefined &&
-              (typeof entry.brandModel !== 'string' || entry.brandModel.length > 120))
+              (typeof entry.brandModel !== 'string' || entry.brandModel.length > 120)) ||
+            (entry.location !== undefined &&
+              (typeof entry.location !== 'string' || entry.location.length > 120))
           )
             return false
           validateDeviceInput(entry.input)
