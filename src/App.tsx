@@ -897,8 +897,8 @@ function App() {
                         />
                         <Feature
                           icon={Wrench}
-                          title="Review a quote"
-                          text="Ask AI to explain a repairer's charges and missing details."
+                          title="Estimate repair & recycling"
+                          text="See AI cost ranges in clear tables, without entering a quote."
                         />
                         <Feature
                           icon={BookOpen}

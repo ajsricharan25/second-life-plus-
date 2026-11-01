@@ -2,7 +2,7 @@
 
 Describe a device, add its brand/model and location, and optionally include a photo. The app asks an AI API for a connected assessment of likely causes, why the problem may have occurred, safe checks, repair options, costs, nearby repair listings, and responsible recycling.
 
-**The current app has no offline diagnosis or preset repair-cost/material-weight fallback.** Missing evidence stays unknown. A photo and symptoms cannot confirm an internal fault or establish recoverable material mass. Source-backed findings are still conditional evidence, not a technician's confirmed diagnosis or final shop/recycler quote.
+**The current app has no offline diagnosis or preset repair-cost/material-weight fallback.** Repair and recycling tables include API-generated planning ranges, clearly labelled **AI estimate**, alongside separately labelled published evidence. Unverified estimates are never presented as sourced prices or measured composition. A photo and symptoms cannot confirm an internal fault or establish recoverable material mass. Source-backed findings are still conditional evidence, not a technician's confirmed diagnosis or final shop/recycler quote.
 
 ## Four AI features
 
@@ -10,7 +10,7 @@ All four actions make a new explicit API call using the device details, the curr
 
 1. **Ask a follow-up:** explain new symptoms or the result of a safe check and ask what changes.
 2. **Compare my options:** ask what would make repair, replacement or recycling the better decision.
-3. **Review a repair quote:** enter quoted line items and ask about missing details, compatibility, fees and supported comparisons. A user-entered quote remains an unverified user report.
+3. **Estimate repair & recycling:** generate or refresh cost tables using the device, symptoms and location. No user quote or charge is required. Tables distinguish components, labour and the complete repair; potential material value, whole-device recycler payment and possible disposal fees remain distinct.
 4. **Prepare my shop brief:** generate a tailored message, diagnostic questions and relevant observations to take to a repairer. The app does not contact a shop.
 
 The main report stays visible during follow-ups. Download exports a **device repair passport** containing the main report, follow-up questions and answers, evidence labels and source links. Up to six follow-ups are kept in the current session. Saving retains device details, brand/model and location locally; it does not retain photos or AI answers and reopening does not call an API automatically.
@@ -34,16 +34,16 @@ Use the existing project connected to [ajsricharan25/second-life-plus-](https://
 
 Keep keys on the server. Never commit them, use a `VITE_` prefix, or paste them into chat. No new GitHub repository, domain or Vercel project is needed.
 
-An AI key alone can provide clearly labelled guidance. **Tavily is needed for the current report's web-evidence features**, including supported prices, material quantities and published shop addresses. If search has no useful evidence or is unavailable, those details stay unverified; no shops, weights or prices are fabricated.
+An AI key alone can provide clearly labelled guidance. **Tavily is needed for the current report's web-evidence features**, including supported prices, material quantities and published shop addresses. If search has no useful evidence or is unavailable, those details stay unverified; no shops, measured weights or verified prices are fabricated. The model can still return explicitly unverified monetary planning ranges in the cost tables.
 
 ### Free usage and bounded requests
 
 Use eligible free-plan keys and do not enable paid billing. The code does not turn on billing, buy credits, retry automatically or switch providers. It cannot determine the billing plan associated with a key; provider account settings and allowances remain authoritative.
 
 - Initial assessment: **one model call** and up to **three basic Tavily searches** (repair/prices, recycling/materials, and shops when a location is supplied).
-- Follow-up, comparison, quote review or shop brief: **one model call** and at most **one basic search**.
+- Follow-up, comparison, cost estimate or shop brief: **one model call** and at most **one basic search**.
 - Each search explicitly disables automatic search-depth selection, generated search answers, raw-page retrieval and image retrieval. Search failure leaves general guidance available.
-- At most eight bounded search excerpts enter the model prompt. Initial Groq output is capped at 2,800 completion tokens; follow-ups at 1,800. More detailed answers consume more of the free allowance.
+- At most eight bounded search excerpts enter the model prompt. Initial Groq output is capped at 3,400 completion tokens; cost-estimate actions at 2,400 and other follow-ups at 1,800. More detailed answers consume more of the free allowance.
 - The Groq account shown during setup had 30 RPM, 1,000 RPD, 8,000 TPM and 200,000 TPD for the selected model. Those are account-specific limits, not guaranteed app capacity. Token limits can bind first.
 - Bounded input/output token totals are logged as `[repair-research-usage]`; prompts, photos and credentials are excluded. Check actual usage during a pilot.
 - Tavily's [SDK documentation](https://github.com/tavily-ai/tavily-python#cost) describes a limited free allowance for personal use. Confirm current terms, public-app eligibility and credit costs in your account. No unlimited free public usage is promised.
@@ -65,9 +65,10 @@ The UI always sends an explicit assessment task. Earlier taskless Gemini/OpenAI 
 
 ## Evidence rules
 
-- **Repair prices:** candidates come only from the AI response, must quote an exact retrieved snippet, and pass currency, amount, category and source checks. Component, labour, complete repair and new whole-device prices are distinct. A ₹500 component does not become an invented ₹1,500 repair bill.
-- **Comparison:** when both full-repair and replacement prices exist, code performs arithmetic on those API-derived amounts. No default budget, lifespan or recommendation threshold is inserted. Missing full repair means quote needed.
-- **Recycling:** material names must have quoted source evidence. Numeric material weight requires the submitted brand/model and the named material's literal kg quantity in the excerpt. Total appliance weight cannot become recoverable copper/plastic weight. A scrap rate must appear literally with its currency per kg. Unknown weights and rates stay null. A gross value is calculated only where both are supported, with losses/fees and payout uncertainty stated.
+- **Published repair prices:** candidates come only from the AI response, must quote an exact retrieved snippet, and pass currency, amount, category and source checks. Component, labour, complete repair and new whole-device prices are distinct. A ₹500 component does not become an invented ₹1,500 repair bill.
+- **Comparison:** when both full-repair and replacement prices exist, code performs arithmetic on those API-derived amounts. No default budget, lifespan or recommendation threshold is inserted. Missing sourced prices do not trigger a preset amount; the AI may supply a separately labelled rough repair range.
+- **Published recycling evidence:** material names must have quoted source evidence. Numeric material weight requires the submitted brand/model and the named material's literal kg quantity in the excerpt. Total appliance weight cannot become recoverable copper/plastic weight. A scrap rate must appear literally with its currency per kg. Unknown weights and rates stay null. A gross value is calculated only where both are supported, with losses/fees and payout uncertainty stated.
+- **AI estimates:** generated in the same API response, never from a local price list. Bounded nonnegative low/high ranges must use the requested currency and include assumptions. Invalid/missing rows are omitted. Parts, labour and inspection are not added again to the full-repair row; alternative scenarios are not summed. Potential gross material values are not added to the whole-device payout estimate, and recycling fees are amounts paid by the owner. API failure creates no estimates. Text downloads include estimate labels and assumptions.
 - **Nearby shops:** a name and address must occur in a retrieved snippet and match a supplied city/postcode term. Maps links are built from that address. No invented distances, ratings, opening hours or live quotations. The AI's component-specific service phrase can also open a Google Maps search; it is not a confirmed fault or verified business listing.
 - **Photos:** JPEG/PNG/WebP uploads up to 8 MB are resized to a JPEG no larger than 1 MB, with metadata stripped. An unchecked consent box controls sending the photo to the model. Photos never go to Tavily and are not resent during follow-ups.
 - **Safety:** a local hazard alert can appear immediately, including when the API is unavailable. AI instructions restrict checks to non-invasive actions and identify internal/hazardous work needing qualified handling. Static form labels, validation, direct search links and safety alerts are not AI diagnoses.
@@ -103,7 +104,7 @@ Tests cover provider formats, evidence validation, unsupported weights/prices/sh
 - **Missing configuration:** verify uppercase variable names and `REPAIR_AI_PROVIDER`, then deploy again.
 - **Quota/rate limit:** inspect the selected provider/model's allowance. The app does not automatically retry or enable billing.
 - **No web check:** verify `TAVILY_API_KEY` and its allowance; an empty search can also leave evidence unavailable.
-- **No material value or local listing:** provide the exact brand/model and city. Evidence may genuinely be absent; the app will not invent it.
+- **No published material evidence or local listing:** provide the exact brand/model and city. Evidence may genuinely be absent; the app will not invent it.
 - **Rejected/incomplete answer:** inspect the sanitized Connection details and Vercel runtime logs, then check model availability and supported JSON/image input.
 - **Deployment Ready with npm warnings:** the deployment succeeded. Runtime API problems are separate from build warnings such as an environment-level `cache-dir` setting.
 

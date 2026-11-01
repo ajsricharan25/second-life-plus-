@@ -3,7 +3,7 @@ import type { DeviceId } from './device'
 
 export type ResearchProvider = 'openai' | 'gemini' | 'groq'
 export type AssessmentTask =
-  'assessment' | 'follow-up' | 'comparison' | 'quote-review' | 'repair-brief'
+  'assessment' | 'follow-up' | 'comparison' | 'cost-estimate' | 'quote-review' | 'repair-brief'
 
 export interface ResearchRequest {
   appliance: DeviceId
@@ -44,11 +44,28 @@ export interface ResearchResult {
   repairService?: string
   shops?: ResearchShop[]
   materials?: ResearchMaterial[]
+  costEstimates?: CostEstimates
   searchSuggestionsHtml?: string
   priceCheck?: {
     status: 'checked' | 'unavailable'
     items: PublishedPrice[]
   }
+}
+
+/** Model-generated planning ranges, never verified prices or guaranteed payouts. */
+export interface CostEstimate {
+  item: string
+  kind:
+    'part' | 'labor' | 'inspection' | 'total-repair' | 'material' | 'device-scrap' | 'recycling-fee'
+  low: number
+  high: number
+  currency: Currency
+  assumptions: string
+}
+
+export interface CostEstimates {
+  repair: CostEstimate[]
+  recycling: CostEstimate[]
 }
 
 export interface ResearchShop {

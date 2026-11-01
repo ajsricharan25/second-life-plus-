@@ -86,7 +86,7 @@ describe('unified provider workflow', () => {
         repairService: data.repairService,
         priceCheck: { status: 'unavailable', items: [] },
       })
-      expect(result.text).toContain('No preset weights')
+      expect(result.text).toContain('no preset payout has been substituted')
       expect(result.text).not.toMatch(/₹|\b\d+\s*kg/)
       expect(parseResearchResult(result)).toEqual(result)
     },
@@ -123,7 +123,7 @@ describe('unified provider workflow', () => {
     expect(searches.map((call) => call.query).join(' ')).toMatch(/material composition/)
     expect(searches.map((call) => call.query).join(' ')).toMatch(/shop address Chennai/)
   })
-  it.each(['follow-up', 'comparison', 'quote-review', 'repair-brief'] as const)(
+  it.each(['follow-up', 'comparison', 'cost-estimate', 'quote-review', 'repair-brief'] as const)(
     'passes %s context to the API without retries or preset assessment data',
     async (task) => {
       const fetcher = vi
@@ -207,5 +207,15 @@ describe('unified provider workflow', () => {
     { task: 'follow-up', previousAssessment: 'Prior answer', question: 'x'.repeat(1201) },
   ])('rejects invalid action context before any provider call: %j', (patch) => {
     expect(() => parseResearchRequest({ ...input, ...patch })).toThrow()
+  })
+  it('accepts the cost action with device context and no user-supplied amount or question', () => {
+    const request = parseResearchRequest({
+      ...input,
+      task: 'cost-estimate',
+      previousAssessment: 'A drain obstruction or pump fault is possible.',
+    })
+    expect(request.task).toBe('cost-estimate')
+    expect(request).not.toHaveProperty('question')
+    expect(request).not.toHaveProperty('replacementCost')
   })
 })

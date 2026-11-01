@@ -1,10 +1,13 @@
 import type { ResearchResult } from './research-types'
 import { buildShopMapsUrl } from './service-search'
+import { isCostEstimates } from './cost-estimates'
 
 export function parseResearchResult(value: unknown): ResearchResult {
   if (!value || typeof value !== 'object') throw new Error('Invalid research response')
   const data = value as Partial<ResearchResult>
   const modelOnly = data.evidence === 'model-only'
+  if (data.costEstimates !== undefined && !isCostEstimates(data.costEstimates))
+    throw new Error('Invalid AI cost estimates')
   if (
     data.status !== 'ok' ||
     typeof data.text !== 'string' ||

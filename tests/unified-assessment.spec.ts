@@ -34,7 +34,12 @@ test('one API report contains diagnosis, reason, prices, recycling evidence and 
   const answer = page.locator('.research-answer')
   await expect(answer).toContainText('Why it may have occurred')
   await expect(answer).toContainText('₹500, excluding labour')
-  await expect(answer).toContainText('Full repair quote needed')
+  await expect(
+    page.getByRole('table', { name: 'Repair cost estimates', exact: true }),
+  ).toContainText('₹750–₹1,250')
+  await expect(
+    page.getByRole('table', { name: 'Recycling value estimates', exact: true }),
+  ).toContainText('₹900–₹1,900')
   await expect(answer).toContainText('Copper: 2 kg')
   await expect(page.locator('.published-prices, .planning-details, .repair-cost')).toHaveCount(0)
   await expect(page.getByText('Offline planning estimate and material assumptions')).toHaveCount(0)
@@ -67,11 +72,7 @@ test('one API report contains diagnosis, reason, prices, recycling evidence and 
 for (const [task, label, question] of [
   ['follow-up', 'Ask a follow-up', 'The external hose is clear. What does that change?'],
   ['comparison', 'Compare my options', 'I want to keep it for two more years.'],
-  [
-    'quote-review',
-    'Review a repair quote',
-    '₹1,800: part ₹900, labour ₹600, inspection ₹300. No warranty stated.',
-  ],
+  ['cost-estimate', 'Estimate repair & recycling', 'Prefer compatible parts if suitable.'],
   ['repair-brief', 'Prepare my shop brief', 'Please mention the E03 error code.'],
 ]) {
   test(`${label} calls the API with context and keeps one connected passport`, async ({ page }) => {
@@ -119,9 +120,11 @@ test('unavailable search leaves honest unknown prices, quantities and shops with
   await fillDevice(page)
   await analyze(page)
   await expect(page.getByText('AI GUIDANCE · NO WEB CHECK', { exact: true })).toBeVisible()
-  await expect(page.locator('.research-answer')).toContainText('Quote needed')
   await expect(page.locator('.research-answer')).toContainText(
-    'Material quantities and scrap value are not established',
+    'The AI did not return a usable repair cost',
+  )
+  await expect(page.locator('.research-answer')).toContainText(
+    'The AI did not return a usable recycling value',
   )
   await expect(page.getByRole('link', { name: 'Open shop in Google Maps' })).toHaveCount(0)
   await expect(page.locator('.research-answer')).not.toContainText('₹')
@@ -335,4 +338,97 @@ test('opening examples and resources never spends API quota or supplies a fake d
     'https://www.ifixit.com/Guide',
   )
   expect(count).toBe(0)
+})
+
+test('cost action needs no quote and renders fresh API ranges without replacing the original report', async ({
+  page,
+}) => {
+  const requests: Record<string, unknown>[] = []
+  await page.route('**/api/research', (route) => {
+    const request = route.request().postDataJSON()
+    requests.push(request)
+    return route.fulfill({
+      json:
+        request.task === 'assessment'
+          ? report
+          : {
+              ...guidance,
+              text: 'Repair options\nThe assumed pump replacement remains unconfirmed.\n\nRepair costs\nPump repair total: ₹1,900–₹2,600. AI estimate — taxes excluded.\n\nRecycling value\nWhole washing machine: ₹900–₹1,900. AI estimate — recycler payment unconfirmed.',
+              costEstimates: {
+                repair: [{ ...report.costEstimates!.repair[2], low: 1900, high: 2600 }],
+                recycling: report.costEstimates!.recycling,
+              },
+            },
+    })
+  })
+  await fillDevice(page)
+  await analyze(page)
+  await expect(
+    page.getByRole('table', { name: 'Repair cost estimates', exact: true }),
+  ).toContainText('AI estimate')
+  await expect(
+    page.getByRole('table', { name: 'Repair cost estimates', exact: true }),
+  ).toContainText('Published price')
+  await expect(page.getByRole('button', { name: /Review a repair quote/ })).toHaveCount(0)
+  await page
+    .locator('.ai-action-grid')
+    .getByRole('button', { name: /Estimate repair & recycling/ })
+    .click()
+  await expect(page.locator('#ai-question')).toHaveValue('')
+  await expect(page.locator('#ai-question')).not.toHaveAttribute('required')
+  await page
+    .getByRole('button', { name: 'Estimate repair & recycling with AI', exact: true })
+    .click()
+  const reply = page.getByRole('region', {
+    name: 'Estimate repair & recycling response',
+    exact: true,
+  })
+  await expect(
+    reply.getByRole('table', { name: 'Repair cost estimates', exact: true }),
+  ).toContainText('₹1,900–₹2,600')
+  await expect(
+    reply.getByRole('table', { name: 'Recycling value estimates', exact: true }),
+  ).toContainText('Collection / disposal fee — you pay')
+  await expect(
+    page.getByRole('table', { name: 'Repair cost estimates', exact: true }).first(),
+  ).toContainText('₹750–₹1,250')
+  expect(requests).toHaveLength(2)
+  expect(requests[1]).toMatchObject({
+    task: 'cost-estimate',
+    brandModel: 'Example Washer 100',
+    location: 'Chennai 600073',
+  })
+  expect(requests[1]).not.toHaveProperty('question')
+  expect(requests[1]).not.toHaveProperty('replacementCost')
+  expect(requests[1]).not.toHaveProperty('image')
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  )
+  const download = page.waitForEvent('download')
+  await page.getByRole('button', { name: 'Download', exact: true }).click()
+  const text = await readFile((await (await download).path())!, 'utf8')
+  expect(text).toContain('₹1,900–₹2,600')
+  expect(text).toContain('AI estimate')
+})
+
+test('AI ranges remain labelled estimates when web evidence is unavailable', async ({ page }) => {
+  await page.route('**/api/research', (route) =>
+    route.fulfill({
+      json: {
+        ...guidance,
+        costEstimates: report.costEstimates,
+      },
+    }),
+  )
+  await fillDevice(page)
+  await analyze(page)
+  await expect(
+    page.getByRole('table', { name: 'Repair cost estimates', exact: true }),
+  ).toContainText('₹750–₹1,250')
+  await expect(
+    page.getByRole('table', { name: 'Recycling value estimates', exact: true }),
+  ).toContainText('₹900–₹1,900')
+  await expect(page.locator('.cost-basis.published')).toHaveCount(0)
+  await expect(page.getByText('AI GUIDANCE · NO WEB CHECK', { exact: true })).toBeVisible()
+  await expect(page.getByRole('list', { name: 'Research sources' })).toHaveCount(0)
 })

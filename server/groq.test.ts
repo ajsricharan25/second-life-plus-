@@ -28,12 +28,19 @@ const section = {
   text: 'A restricted drain path could cause this. Check the external hose with power disconnected.',
   sourceIds: [] as number[],
 }
-function completion(sections: unknown[] = [section], prices: unknown[] = []) {
+function completion(
+  sections: unknown[] = [section],
+  prices: unknown[] = [],
+  costEstimates?: unknown,
+) {
   return {
     choices: [
       {
         finish_reason: 'stop',
-        message: { role: 'assistant', content: JSON.stringify({ sections, prices }) },
+        message: {
+          role: 'assistant',
+          content: JSON.stringify({ sections, prices, costEstimates }),
+        },
       },
     ],
   }
@@ -92,7 +99,7 @@ describe('Groq assessment contract', () => {
       webSearch: { provider: 'tavily', status: 'not-configured' },
     })
     expect(result.text).toContain(section.text)
-    expect(result.text).toContain('Quote needed')
+    expect(result.text).toContain('The API did not return a usable repair amount')
     expect(parseResearchResult(result)).toEqual(result)
   })
 
@@ -146,7 +153,7 @@ describe('Groq assessment contract', () => {
         sourceTitle: source.title,
       },
     ])
-    expect(result.text).toContain('Full repair quote needed')
+    expect(result.text).toContain('Published component prices exclude unspecified labour')
     expect(result.text).not.toContain('1500')
     for (const [index, citation] of result.citations.entries()) {
       expect(result.text.slice(citation.start, citation.end)).toBe(`[${index + 1}]`)
@@ -409,5 +416,94 @@ describe('Groq assessment contract', () => {
       JSON.stringify({ provider: 'groq', inputTokens: 1200, outputTokens: 800 }),
     )
     expect(JSON.stringify(log.mock.calls)).not.toContain('Washer')
+  })
+})
+
+describe('API-generated repair and recycling ranges', () => {
+  const costs = {
+    repair: [
+      {
+        item: 'Pump and fitting',
+        kind: 'total-repair',
+        low: 750,
+        high: 1250,
+        currency: 'INR',
+        assumptions: 'Compatible pump and workshop labour, excluding tax and home visit.',
+      },
+    ],
+    recycling: [
+      {
+        item: 'Complete washer',
+        kind: 'device-scrap',
+        low: 900,
+        high: 1900,
+        currency: 'INR',
+        assumptions:
+          'Possible complete-unit recycler payment; composition and recovery are unmeasured.',
+      },
+    ],
+  }
+  it.each(['assessment', 'cost-estimate'] as const)(
+    'returns %s ranges from the model without requesting a user quote or making extra model calls',
+    async (task) => {
+      const fetcher = vi
+        .fn<typeof fetch>()
+        .mockResolvedValue(Response.json(completion([section], [], costs)))
+      const result = await run(fetcher, false, {
+        ...input,
+        task,
+        ...(task === 'cost-estimate' ? { previousAssessment: section.text } : {}),
+      })
+      expect(fetcher).toHaveBeenCalledTimes(1)
+      expect(result.costEstimates).toEqual(costs)
+      expect(result.priceCheck).toEqual({ status: 'unavailable', items: [] })
+      expect(result.materials).toEqual([])
+      expect(result.citations).toEqual([])
+      expect(result.evidence).toBe('model-only')
+      expect(result.text).toContain('₹750–₹1,250')
+      expect(result.text).toContain('₹900–₹1,900')
+      expect(result.text).toContain('AI estimate — not a verified price or payout')
+      expect(result.text).not.toMatch(/quote needed|enter.*charge/i)
+      expect(parseResearchResult(result).costEstimates).toEqual(costs)
+      const payload = JSON.parse(fetcher.mock.calls[0][1]!.body as string)
+      expect(JSON.parse(payload.messages[1].content).details).not.toHaveProperty('question')
+    },
+  )
+  it('preserves a published component price alongside a separately labelled AI repair total', async () => {
+    const result = await run(withSearch(completion([section], [price], costs)), true)
+    expect(result.priceCheck?.items).toHaveLength(1)
+    expect(result.priceCheck?.items[0]).toMatchObject({ kind: 'part', low: 500, high: 500 })
+    expect(result.costEstimates?.repair[0]).toMatchObject({
+      kind: 'total-repair',
+      low: 750,
+      high: 1250,
+    })
+    expect(result.citations).toHaveLength(1)
+    expect(result.text).toContain(excerpt)
+    expect(parseResearchResult(result)).toEqual(result)
+  })
+  it('uses the API amounts for a custom device in USD without substituting washer values', async () => {
+    const customCosts = {
+      repair: [
+        { ...costs.repair[0], item: 'Drone connector repair', low: 35, high: 85, currency: 'USD' },
+      ],
+      recycling: [
+        { ...costs.recycling[0], item: 'Complete drone', low: 0, high: 5, currency: 'USD' },
+      ],
+    }
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(Response.json(completion([section], [], customCosts)))
+    const result = await run(fetcher, false, {
+      ...input,
+      appliance: 'other',
+      deviceName: 'Camera drone',
+      currency: 'USD',
+      task: 'assessment',
+    })
+    expect(result.costEstimates).toEqual(customCosts)
+    expect(result.text).not.toContain('₹')
+    expect(result.text).toContain('Drone connector repair')
+    expect(parseResearchResult(result)).toEqual(result)
   })
 })

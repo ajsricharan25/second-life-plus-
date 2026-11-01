@@ -3426,6 +3426,98 @@ main {
   color: #24583c;
   overflow-wrap: anywhere;
 }
+.report-costs {
+  margin: 1.5rem 0;
+  min-width: 0;
+}
+.cost-table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid #ccd8c5;
+  border-radius: 12px;
+  background: #fff;
+}
+.cost-table-scroll:focus-visible {
+  outline: 2px solid #315c45;
+  outline-offset: 3px;
+}
+.cost-scroll-hint {
+  display: none;
+  font-size: 0.78rem;
+  color: #535e4e;
+}
+.report-cost-table {
+  width: 100%;
+  min-width: 560px;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 0.83rem;
+  line-height: 1.6;
+}
+.report-cost-table caption {
+  padding: 1rem;
+  text-align: left;
+  font-size: 1.08rem;
+  font-weight: 650;
+  color: #224d3b;
+  background: #f0f5e9;
+}
+.report-cost-table th,
+.report-cost-table td {
+  padding: 0.8rem;
+  vertical-align: top;
+  border-top: 1px solid #dce3d1;
+  overflow-wrap: anywhere;
+}
+.report-cost-table thead th {
+  background: #f7f9f3;
+  color: #31543c;
+  font-weight: 650;
+}
+.report-cost-table tbody th {
+  width: 22%;
+  font-weight: 600;
+}
+.report-cost-table small,
+.report-cost-table a {
+  display: block;
+  margin-top: 0.3rem;
+}
+.report-cost-table small {
+  font-weight: 400;
+  color: #535e4e;
+}
+.report-cost-table a {
+  color: #24583c;
+  text-decoration: underline;
+}
+.cost-amount {
+  min-width: 110px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+.cost-basis {
+  display: inline-block;
+  padding: 0.15rem 0.45rem;
+  border-radius: 5px;
+  background: #fff1d5;
+  color: #74521c;
+  font-size: 0.75rem;
+  font-weight: 600;
+  overflow-wrap: normal;
+}
+.cost-basis.published {
+  background: #edf3e5;
+  color: #31543c;
+}
+.cost-total {
+  background: #f4f8ee;
+}
+.unified-report .report-costs .research-price-note {
+  margin-top: 0.65rem;
+  font-size: 0.78rem;
+  line-height: 1.65;
+}
 .ai-next-actions {
   border-top: 1px solid #dce3d1;
   margin-top: 1.5rem;
@@ -3496,6 +3588,9 @@ main {
   cursor: wait;
 }
 @media (max-width: 600px) {
+  .cost-scroll-hint {
+    display: block;
+  }
   .ai-action-grid {
     grid-template-columns: 1fr;
   }

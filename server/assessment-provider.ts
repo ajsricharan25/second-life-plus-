@@ -9,7 +9,8 @@ export function assessmentCall(
   prompt: string,
   input: ResearchRequest,
 ): { url: string; headers: Record<string, string>; body: unknown } {
-  const maxTokens = input.task === 'assessment' ? 2800 : input.task ? 1800 : 1800
+  const maxTokens =
+    input.task === 'assessment' ? 3400 : input.task === 'cost-estimate' ? 2400 : 1800
   if (provider === 'gemini')
     return {
       url: `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,

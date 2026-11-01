@@ -7,6 +7,7 @@ import { failureDetailLines } from '../lib/research-failure-details'
 import type { AssessmentTask, ResearchRequest, ResearchResult } from '../lib/research-types'
 import { buildMapsSearchUrl, buildShopMapsUrl } from '../lib/service-search'
 import ResearchAlternatives from './ResearchAlternatives'
+import CostTable from './CostTable'
 
 type Activity = { title: string; question?: string; result: ResearchResult }
 const actions = [
@@ -21,10 +22,10 @@ const actions = [
     description: 'Explore what would make repair, replacement or recycling the better choice.',
   },
   {
-    task: 'quote-review',
-    title: 'Review a repair quote',
+    task: 'cost-estimate',
+    title: 'Estimate repair & recycling',
     description:
-      'Get an explanation of quoted charges, missing details and source-backed comparisons.',
+      'Get AI estimates for parts, labour, the complete repair and potential recycling value. No quote needed.',
   },
   {
     task: 'repair-brief',
@@ -94,12 +95,8 @@ export default function WebResearchPanel({
   async function research(nextTask: AssessmentTask) {
     if (busy.current) return
     if (nextTask !== 'assessment' && !result) return
-    if (['follow-up', 'quote-review'].includes(nextTask) && !question.trim()) {
-      setMessage(
-        nextTask === 'quote-review'
-          ? 'Enter the quoted amount, currency and what it includes.'
-          : 'Add your question or new observations first.',
-      )
+    if (nextTask === 'follow-up' && !question.trim()) {
+      setMessage('Add your question or new observations first.')
       return
     }
     if (nextTask !== 'assessment' && history.length >= 6) {
@@ -339,9 +336,9 @@ export default function WebResearchPanel({
             )}
           </div>
           <p className="research-price-note">
-            Published prices and material values are conditional evidence, not confirmed bills or
-            recycler payouts. No preset diagnosis, repair cost or scrap weight is added to this
-            report.
+            AI cost ranges are labelled estimates. Published prices and material values remain
+            conditional evidence, not confirmed bills or recycler payouts. No preset diagnosis,
+            repair cost or scrap weight is added to this report.
           </p>
           <section className="ai-next-actions" aria-labelledby="next-ai-title">
             <h5 id="next-ai-title">Make the answer work for you</h5>
@@ -370,8 +367,8 @@ export default function WebResearchPanel({
               }}
             >
               <label htmlFor="ai-question">
-                {task === 'quote-review'
-                  ? 'Repair quote to review'
+                {task === 'cost-estimate'
+                  ? 'Any repair preferences? (optional — no quote needed)'
                   : task === 'follow-up'
                     ? 'Your question or new observation'
                     : 'Anything else AI should consider? (optional)'}
@@ -382,10 +379,10 @@ export default function WebResearchPanel({
                 onChange={(event) => setQuestion(event.target.value)}
                 maxLength={1200}
                 rows={3}
-                required={task === 'quote-review' || task === 'follow-up'}
+                required={task === 'follow-up'}
                 placeholder={
-                  task === 'quote-review'
-                    ? 'e.g. ₹1,800: pump ₹900, labour ₹600, inspection ₹300. Warranty not mentioned.'
+                  task === 'cost-estimate'
+                    ? 'Leave blank to estimate from your device and symptoms, or mention original vs compatible parts…'
                     : 'Describe what changed, what you tried, or what matters most to you…'
                 }
               />
@@ -430,6 +427,7 @@ function CitedAnswer({ result }: { result: ResearchResult }) {
     ...new Map(result.citations.map((citation) => [citation.url, citation])).values(),
   ]
   const content: ReactNode[] = []
+  const costTables = new Set<'repair' | 'recycling'>()
   const headings = new Set([
     'Summary',
     'Why it may have occurred',
@@ -440,6 +438,7 @@ function CitedAnswer({ result }: { result: ResearchResult }) {
     'Repair or replace',
     'Recycling plan',
     'Recycling evidence',
+    'Recycling value',
     'What would narrow it down',
     'Quote review',
     'Repair brief',
@@ -454,6 +453,14 @@ function CitedAnswer({ result }: { result: ResearchResult }) {
         : headings.has(block)
           ? block
           : null
+    const category =
+      heading === 'Repair costs' ? 'repair' : heading === 'Recycling value' ? 'recycling' : null
+    if (category) {
+      content.push(<CostTable key={blockIndex} result={result} category={category} />)
+      costTables.add(category)
+      offset = end + 2
+      continue
+    }
     let cursor = offset + (heading ? heading.length + (newline >= 0 ? 1 : 0) : 0)
     const nodes: ReactNode[] = []
     for (const [index, citation] of result.citations.entries()) {
@@ -482,6 +489,10 @@ function CitedAnswer({ result }: { result: ResearchResult }) {
       </div>,
     )
     offset = end + 2
+  }
+  for (const category of ['repair', 'recycling'] as const) {
+    if (!costTables.has(category) && result.costEstimates?.[category].length)
+      content.push(<CostTable key={category} result={result} category={category} />)
   }
   return (
     <>

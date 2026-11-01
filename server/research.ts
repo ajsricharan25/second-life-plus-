@@ -61,9 +61,14 @@ export function parseResearchRequest(value: unknown): ResearchRequest {
   let previousAssessment: string | undefined
   if (value.task !== undefined) {
     if (
-      !['assessment', 'follow-up', 'comparison', 'quote-review', 'repair-brief'].includes(
-        String(value.task),
-      )
+      ![
+        'assessment',
+        'follow-up',
+        'comparison',
+        'cost-estimate',
+        'quote-review',
+        'repair-brief',
+      ].includes(String(value.task))
     )
       failInput('Choose a supported AI action.')
     task = value.task as ResearchRequest['task']
