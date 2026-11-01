@@ -17,8 +17,10 @@
     "node": "24.x"
   },
   "dependencies": {
+    "@auth0/auth0-react": "^2.30.0",
     "@fontsource-variable/dm-sans": "^5.3.0",
     "@fontsource/dm-serif-display": "^5.3.0",
+    "jose": "^6.2.14",
     "lucide-react": "^1.59.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"

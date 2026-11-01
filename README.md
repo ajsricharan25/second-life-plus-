@@ -48,7 +48,13 @@ Use eligible free-plan keys and do not enable paid billing. The code does not tu
 - Bounded input/output token totals are logged as `[repair-research-usage]`; prompts, photos and credentials are excluded. Check actual usage during a pilot.
 - Tavily's [SDK documentation](https://github.com/tavily-ai/tavily-python#cost) describes a limited free allowance for personal use. Confirm current terms, public-app eligibility and credit costs in your account. No unlimited free public usage is promised.
 
-The endpoint has a process-local six-requests-per-minute burst guard and a shared 45-second deadline. It is not a distributed per-person quota across Vercel instances. Vercel functions allow 60 seconds. Provider quota errors are shown explicitly; exhaustion does not enable paid usage.
+The endpoint has a process-local six-requests-per-minute burst guard and a shared 45-second AI deadline. Vercel research functions allow 60 seconds. Provider quota errors are shown explicitly; exhaustion does not enable paid usage.
+
+### Persistent daily account limits
+
+The optional sign-in flow gives each account **3 AI actions daily**, resetting at **midnight India time**. The server verifies an Auth0 access token and atomically reserves usage in shared Upstash Redis before calling any AI/search provider. Refreshing the browser, renewing a sign-in token or moving to a different Vercel worker does not reset the same account's allowance. All AI actions share the limit, including requests that fail after reservation. Read-only quota checks do not spend the allowance.
+
+**Activation requires external configuration.** Follow [the Auth0 + Redis setup guide](docs/daily-limits-setup.md), then set `DAILY_QUOTA_ENABLED=true` and deploy. Until enabled, the existing app continues without a persistent daily cap. Once enabled, missing/failed storage or unverified sign-in blocks AI; there is no in-memory fallback. No paid resources or billing are enabled by this code. This is an account allowance, not an app-wide monthly cap or a guarantee against people creating multiple accounts.
 
 ### Other supported AI providers
 

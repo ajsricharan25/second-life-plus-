@@ -19,6 +19,9 @@ import { extractGeminiJson, extractGeminiResearch } from './gemini.ts'
 import { aiError, classifyProviderError, ResearchError } from './research-error.ts'
 import { providerDiagnostics } from './provider-diagnostics.ts'
 import { runGroqAssessment } from './groq.ts'
+import { createDailyQuota, dailyQuotaEnabled } from './daily-quota.ts'
+import { createIdentityVerifier } from './research-identity.ts'
+import type { DailyUsage } from '../src/lib/daily-usage.ts'
 
 type ResearchHttpRequest = IncomingMessage & { body?: unknown }
 type Environment = Record<string, string | undefined>
@@ -29,6 +32,8 @@ interface HandlerOptions {
   timeoutMs?: number
   now?: () => number
   rateLimit?: { requests: number; windowMs: number }
+  quotaFetcher?: typeof fetch
+  identityFetcher?: typeof fetch
 }
 
 const MAX_BODY_BYTES = 1_500_000
@@ -332,9 +337,11 @@ export function createResearchHandler(options: HandlerOptions = {}) {
   const now = options.now ?? Date.now
   const limit = options.rateLimit ?? { requests: 6, windowMs: 60_000 }
   const requests = new Map<string, { count: number; until: number }>()
+  let verifyIdentity: ReturnType<typeof createIdentityVerifier> | undefined
   // This is a process-local burst guard, not a distributed production quota.
   // Configure deployment-level rate limits and provider spending limits too.
   return async function handler(request: ResearchHttpRequest, response: ServerResponse) {
+    let usage: DailyUsage | undefined
     try {
       if (request.method !== 'POST') {
         response.setHeader('Allow', 'POST')
@@ -404,10 +411,15 @@ export function createResearchHandler(options: HandlerOptions = {}) {
           ? { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey }
           : { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` }
       const timestamp = now()
+      let identity: string | undefined
+      if (dailyQuotaEnabled(env)) {
+        verifyIdentity ??= createIdentityVerifier({ env, fetcher: options.identityFetcher, now })
+        identity = await verifyIdentity(request)
+      }
       for (const [key, entry] of requests) {
         if (entry.until <= timestamp) requests.delete(key)
       }
-      const client = request.socket?.remoteAddress ?? 'unknown'
+      const client = identity ?? request.socket?.remoteAddress ?? 'unknown'
       const bucket = requests.get(client)
       if (bucket && bucket.count >= limit.requests) {
         response.setHeader('Retry-After', Math.max(1, Math.ceil((bucket.until - timestamp) / 1000)))
@@ -425,6 +437,24 @@ export function createResearchHandler(options: HandlerOptions = {}) {
         until: bucket?.until ?? timestamp + limit.windowMs,
       })
 
+      if (identity) {
+        const quota = createDailyQuota({ env, fetcher: options.quotaFetcher, now })
+        const reservation = await quota(identity, true)
+        usage = reservation.usage
+        if (!reservation.allowed) {
+          response.setHeader(
+            'Retry-After',
+            Math.max(1, Math.ceil((Date.parse(usage.resetsAt) - now()) / 1000)),
+          )
+          throw new ResearchError(
+            429,
+            'daily_limit_reached',
+            'Your daily AI allowance is used up. It resets at midnight India time.',
+          )
+        }
+      }
+
+      if (request.aborted || response.destroyed) return
       const controller = new AbortController()
       const timeout = setTimeout(() => controller.abort(), options.timeoutMs ?? 45_000)
       const onAbort = () => controller.abort()
@@ -442,7 +472,7 @@ export function createResearchHandler(options: HandlerOptions = {}) {
             signal: controller.signal,
             checkedAt: new Date(now()).toISOString(),
           })
-          sendJson(response, 200, research)
+          sendJson(response, 200, { ...research, ...(usage ? { usage } : {}) })
           return
         }
         const { image, ...details } = input
@@ -602,7 +632,7 @@ export function createResearchHandler(options: HandlerOptions = {}) {
           // Keep the sourced answer usable when price extraction fails or times out.
           // No unverified extracted amount is substituted for a published price.
         }
-        sendJson(response, 200, research)
+        sendJson(response, 200, { ...research, ...(usage ? { usage } : {}) })
       } catch (error) {
         if (controller.signal.aborted) {
           throw new ResearchError(
@@ -634,6 +664,7 @@ export function createResearchHandler(options: HandlerOptions = {}) {
       if (failure.status === 429 && failure.details?.retryAfterSeconds)
         response.setHeader('Retry-After', failure.details.retryAfterSeconds)
       sendJson(response, failure.status, {
+        ...(usage ? { usage } : {}),
         error: {
           code: failure.code,
           message: failure.message,

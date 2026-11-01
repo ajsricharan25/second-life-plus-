@@ -1,5 +1,11 @@
 // Public messages are selected by code; provider response bodies are never shown.
 export const researchErrorMessages = {
+  sign_in_required:
+    'Sign in to use your daily AI allowance. If you already signed in, reconnect and try again.',
+  daily_limit_reached:
+    'You’ve used today’s AI allowance. It resets at midnight India time. Your existing report and direct search links are still available.',
+  daily_limit_unavailable:
+    'The daily allowance could not be checked. No AI request was started. Please try again later.',
   not_configured:
     'Web research isn’t enabled yet. The app owner needs to connect an AI provider. You can still search published information directly below.',
   configuration_error:

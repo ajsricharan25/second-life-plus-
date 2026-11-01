@@ -3426,6 +3426,32 @@ main {
   color: #24583c;
   overflow-wrap: anywhere;
 }
+.access-loading {
+  margin: 2rem;
+  color: #224d3b;
+}
+.daily-allowance {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin: 1rem clamp(1rem, 4vw, 4rem);
+  padding: 1rem 1.2rem;
+  background: #edf3e5;
+  border: 1px solid #ccd8c5;
+  border-radius: 12px;
+  color: #224d3b;
+}
+.daily-allowance > div {
+  flex: 1;
+}
+.daily-allowance p {
+  margin: 0.4rem 0 0;
+  font-size: 0.85rem;
+  line-height: 1.6;
+}
+.daily-allowance .button {
+  flex-shrink: 0;
+}
 .report-costs {
   margin: 1.5rem 0;
   min-width: 0;
@@ -3588,6 +3614,9 @@ main {
   cursor: wait;
 }
 @media (max-width: 600px) {
+  .daily-allowance {
+    flex-wrap: wrap;
+  }
   .cost-scroll-hint {
     display: block;
   }

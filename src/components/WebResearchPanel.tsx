@@ -8,6 +8,7 @@ import type { AssessmentTask, ResearchRequest, ResearchResult } from '../lib/res
 import { buildMapsSearchUrl, buildShopMapsUrl } from '../lib/service-search'
 import ResearchAlternatives from './ResearchAlternatives'
 import CostTable from './CostTable'
+import { AccessError, useResearchAccess } from './ResearchAccess'
 
 type Activity = { title: string; question?: string; result: ResearchResult }
 const actions = [
@@ -56,6 +57,10 @@ export default function WebResearchPanel({
   onResult?: (result: ResearchResult | null) => void
   onHistory?: (history: Activity[]) => void
 }) {
+  const access = useResearchAccess()
+  const accessBlocked =
+    access.enabled &&
+    (access.loading || !access.authenticated || !access.usage || access.usage.remaining === 0)
   const [result, setResult] = useState<ResearchResult | null>(null)
   const [history, setHistory] = useState<Activity[]>([])
   const [status, setStatus] = useState<'idle' | 'loading' | 'error'>('idle')
@@ -94,6 +99,14 @@ export default function WebResearchPanel({
 
   async function research(nextTask: AssessmentTask) {
     if (busy.current) return
+    if (accessBlocked) {
+      setMessage(
+        access.usage?.remaining === 0
+          ? 'Your daily AI allowance is used up. It resets at midnight India time.'
+          : 'Sign in and wait for your daily allowance to load before using AI.',
+      )
+      return
+    }
     if (nextTask !== 'assessment' && !result) return
     if (nextTask === 'follow-up' && !question.trim()) {
       setMessage('Add your question or new observations first.')
@@ -134,13 +147,17 @@ export default function WebResearchPanel({
               .slice(0, 12000),
           }
     try {
+      const accessHeaders = await access.getHeaders()
+      active.signal.throwIfAborted()
       const response = await fetch('/api/research', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...accessHeaders },
         body: JSON.stringify(payload),
         signal: active.signal,
       })
       const data: unknown = await response.json().catch(() => null)
+      if (controller.current !== active || active.signal.aborted) return
+      access.recordUsage((data as { usage?: unknown } | null)?.usage)
       if (!response.ok) {
         const failure = (data as { error?: { code?: unknown; details?: unknown } } | null)?.error
         throw new ResearchError(
@@ -180,7 +197,7 @@ export default function WebResearchPanel({
       setMessage(
         active.signal.reason === 'timeout'
           ? 'The AI request took too long. Please try again later.'
-          : error instanceof ResearchError
+          : error instanceof ResearchError || error instanceof AccessError
             ? error.message
             : 'The research response couldn’t be verified. Try again or use the direct searches below.',
       )
@@ -220,7 +237,7 @@ export default function WebResearchPanel({
       <button
         className="button button-secondary research-button"
         onClick={() => void research('assessment')}
-        disabled={status === 'loading'}
+        disabled={status === 'loading' || accessBlocked}
       >
         <span>
           {status === 'loading' ? (
@@ -389,7 +406,7 @@ export default function WebResearchPanel({
               <button
                 className="button button-primary"
                 type="submit"
-                disabled={status === 'loading' || history.length >= 6}
+                disabled={status === 'loading' || history.length >= 6 || accessBlocked}
               >
                 <Send size={15} />
                 {action.title} with AI

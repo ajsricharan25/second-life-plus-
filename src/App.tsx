@@ -42,6 +42,7 @@ import {
 import type { LucideIcon } from 'lucide-react'
 import DeviceIllustration from './components/DeviceIllustration'
 import WebResearchPanel from './components/WebResearchPanel'
+import { DailyAllowance, useResearchAccess } from './components/ResearchAccess'
 import type { ResearchRequest, ResearchResult } from './lib/research-types'
 import { preparePhotoForAI } from './lib/photo'
 import { getSafetyWarning } from './lib/estimator'
@@ -82,6 +83,7 @@ const steps = [
 ]
 
 function App() {
+  const access = useResearchAccess()
   const [page, setPage] = useState<Page>('estimate')
   const [menuOpen, setMenuOpen] = useState(false)
   const [appliance, setAppliance] = useState<DeviceId>('washing-machine')
@@ -340,7 +342,7 @@ function App() {
         <button
           className="brand"
           onClick={() => navigate('estimate')}
-          aria-label="Second Life home"
+          aria-label="Secondlife. home"
         >
           <span className="brand-mark">
             <RotateCcw size={24} strokeWidth={2.2} />
@@ -432,6 +434,7 @@ function App() {
           </div>
         </header>
         <main id="main-content">
+          <DailyAllowance />
           {page === 'estimate' && (
             <>
               <section className="hero">
@@ -775,7 +778,18 @@ function App() {
                               <ChevronDown size={13} />
                             </div>
                           </div>
-                          <button className="button button-primary" type="submit" data-mode="ai">
+                          <button
+                            className="button button-primary"
+                            type="submit"
+                            data-mode="ai"
+                            disabled={
+                              access.enabled &&
+                              (access.loading ||
+                                !access.authenticated ||
+                                !access.usage ||
+                                access.usage.remaining === 0)
+                            }
+                          >
                             Analyze with AI <ArrowRight size={17} />
                           </button>
                         </div>
