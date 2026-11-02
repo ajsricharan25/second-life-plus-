@@ -245,7 +245,7 @@ test('Other devices use their own identity and never inherit washer prices', asy
   await expect(page.locator('.research-answer')).not.toContainText('₹')
 })
 
-test('saved details retain location but never recompute a preset estimate or automatically call AI', async ({
+test('saved reports retain evidence and location without recomputing estimates or calling AI', async ({
   page,
 }) => {
   let count = 0
@@ -255,17 +255,18 @@ test('saved details retain location but never recompute a preset estimate or aut
   })
   await fillDevice(page)
   await analyze(page)
-  await page.getByRole('button', { name: 'Save estimate', exact: true }).click()
+  await page.getByRole('button', { name: 'Save report', exact: true }).click()
   const saved = await page.evaluate(() =>
     JSON.parse(localStorage.getItem('second-life-estimates-v1')!),
   )
   expect(saved[0]).toMatchObject({ brandModel: 'Example Washer 100', location: 'Chennai 600073' })
-  expect(JSON.stringify(saved)).not.toContain('external drain path')
+  expect(saved[0].report.result.text).toBe(report.text)
   await page.reload()
   await navigate(page, 'Saved estimates')
   await expect(page.locator('.saved-list')).not.toContainText('₹')
-  await page.getByRole('button', { name: 'View estimate' }).click()
-  await expect(page.getByRole('button', { name: 'Research this repair' })).toBeVisible()
+  await page.getByRole('button', { name: 'View report' }).click()
+  await expect(page.getByRole('button', { name: 'Refresh assessment' })).toBeVisible()
+  await expect(page.locator('.research-answer')).toContainText('external drain path')
   expect(count).toBe(1)
   await expect(page.locator('.research-scope')).toContainText('Chennai 600073')
   await navigate(page, 'Saved estimates')
@@ -380,7 +381,7 @@ test('cost action needs no quote and renders fresh API ranges without replacing 
     .getByRole('button', { name: 'Estimate repair & recycling with AI', exact: true })
     .click()
   const reply = page.getByRole('region', {
-    name: 'Estimate repair & recycling response',
+    name: 'Estimate repair & recycling response 1',
     exact: true,
   })
   await expect(

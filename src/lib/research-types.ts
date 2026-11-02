@@ -28,6 +28,22 @@ export interface ResearchCitation {
   title: string
 }
 
+export interface RepairCoach {
+  nextStep: { title: string; reason: string }
+  questions: { question: string; why: string }[]
+}
+
+export interface ResearchActivity {
+  title: string
+  question?: string
+  result: ResearchResult
+}
+
+export interface SavedReport {
+  result: ResearchResult
+  history: ResearchActivity[]
+}
+
 export interface ResearchResult {
   status: 'ok'
   text: string
@@ -45,6 +61,7 @@ export interface ResearchResult {
   shops?: ResearchShop[]
   materials?: ResearchMaterial[]
   costEstimates?: CostEstimates
+  coach?: RepairCoach
   searchSuggestionsHtml?: string
   priceCheck?: {
     status: 'checked' | 'unavailable'

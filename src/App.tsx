@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import type { FormEvent, ReactNode } from 'react'
 import {
   ArrowDownToLine,
@@ -24,6 +25,7 @@ import {
   Menu,
   Microwave,
   Plus,
+  Printer,
   Recycle,
   Refrigerator,
   RotateCcw,
@@ -42,6 +44,7 @@ import {
 import type { LucideIcon } from 'lucide-react'
 import DeviceIllustration from './components/DeviceIllustration'
 import WebResearchPanel from './components/WebResearchPanel'
+import RepairPassport from './components/RepairPassport'
 import { DailyAllowance, useResearchAccess } from './components/ResearchAccess'
 import type { ResearchRequest, ResearchResult } from './lib/research-types'
 import { preparePhotoForAI } from './lib/photo'
@@ -109,11 +112,13 @@ function App() {
   const [dragging, setDragging] = useState(false)
   const [formError, setFormError] = useState('')
   const [assessment, setAssessment] = useState<{
+    id: string
     input: DeviceInput
   } | null>(null)
   const [saved, setSaved] = useState<SavedEstimate[]>(readSavedEstimates)
   const [savedId, setSavedId] = useState<string | null>(null)
   const [notice, setNotice] = useState('')
+  const [printing, setPrinting] = useState(false)
   const [location, setLocation] = useState('')
   const fileInput = useRef<HTMLInputElement>(null)
   const photoRequest = useRef(0)
@@ -122,6 +127,17 @@ function App() {
   const device = deviceOptions.find((item) => item.id === appliance)!
   const safetyWarning = assessment ? getSafetyWarning(assessment.input.symptoms) : null
   const displayDeviceName = appliance === 'other' ? deviceName.trim() || 'Your device' : device.name
+
+  useEffect(() => {
+    const before = () => flushSync(() => setPrinting(true))
+    const after = () => setPrinting(false)
+    window.addEventListener('beforeprint', before)
+    window.addEventListener('afterprint', after)
+    return () => {
+      window.removeEventListener('beforeprint', before)
+      window.removeEventListener('afterprint', after)
+    }
+  }, [])
 
   useEffect(
     () => () => {
@@ -197,7 +213,7 @@ function App() {
   function assess(details: DeviceInput, withAI = false) {
     try {
       const input = validateDeviceInput(details)
-      setAssessment({ input })
+      setAssessment({ id: crypto.randomUUID(), input })
       setRepairService(`${getDeviceName(input).toLowerCase()} repair`)
       setAiHistory([])
       setAiRun((previous) => (withAI ? previous + 1 : 0))
@@ -250,22 +266,31 @@ function App() {
   }
 
   function saveAssessment() {
-    if (!assessment || savedId) return
-    const entry = {
-      id: crypto.randomUUID(),
-      createdAt: new Date().toISOString(),
+    if (!assessment) return
+    const previous = saved.find((item) => item.id === savedId)
+    const entry: SavedEstimate = {
+      id: savedId ?? crypto.randomUUID(),
+      createdAt: previous?.createdAt ?? new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
       input: assessment.input,
       brandModel: brandModel.trim(),
       location: location.trim(),
+      ...(aiResult ? { report: { result: aiResult, history: aiHistory } } : {}),
     }
-    const next = [entry, ...saved].slice(0, 30)
+    const next = [entry, ...saved.filter((item) => item.id !== entry.id)].slice(0, 30)
     try {
       writeSavedEstimates(next)
       setSaved(next)
       setSavedId(entry.id)
-      setNotice('Estimate saved on this device.')
+      setNotice(
+        aiResult
+          ? 'Report and submitted follow-ups saved in this browser. No photo is stored.'
+          : 'Device details saved in this browser.',
+      )
     } catch {
-      setNotice('Browser storage is unavailable. Download your estimate to keep a copy.')
+      setNotice(
+        'Couldn’t save: browser storage may be full or unavailable. Download your report or remove an older saved item.',
+      )
     }
   }
 
@@ -294,6 +319,8 @@ function App() {
     photoRequest.current++
     setPhoto(null)
     assess(entry.input)
+    setAiResult(entry.report?.result ?? null)
+    setAiHistory(entry.report?.history ?? [])
     setSavedId(entry.id)
   }
 
@@ -849,6 +876,10 @@ function App() {
                           </div>
                         )}
                         <WebResearchPanel
+                          key={assessment.id}
+                          initialReport={
+                            aiResult ? { result: aiResult, history: aiHistory } : undefined
+                          }
                           autoStartToken={aiRun}
                           onAutoStart={() => setAiRun(0)}
                           onResult={setAiResult}
@@ -872,13 +903,13 @@ function App() {
                           }}
                         />
                         <div className="result-actions">
-                          <button
-                            className="button button-primary"
-                            onClick={saveAssessment}
-                            disabled={Boolean(savedId)}
-                          >
+                          <button className="button button-primary" onClick={saveAssessment}>
                             {savedId ? <Check size={16} /> : <Bookmark size={16} />}
-                            {savedId ? 'Estimate saved' : 'Save estimate'}
+                            {aiResult
+                              ? savedId
+                                ? 'Update saved report'
+                                : 'Save report'
+                              : 'Save details'}
                           </button>
                           <button
                             className="button button-secondary"
@@ -887,7 +918,19 @@ function App() {
                           >
                             <ArrowDownToLine size={16} /> Download
                           </button>
+                          <button
+                            className="button button-secondary"
+                            onClick={() => window.print()}
+                            disabled={!aiResult}
+                          >
+                            <Printer size={16} /> Print passport
+                          </button>
                         </div>
+                        <p className="report-save-note">
+                          Save keeps this report and submitted follow-ups in this browser. Photos
+                          and unsent drafts are excluded. Saving, reopening and printing use no AI
+                          actions.
+                        </p>
                       </div>
                     )}
                   </div>
@@ -969,7 +1012,8 @@ function App() {
                       <ShieldCheck size={20} strokeWidth={1.5} />
                       <p>
                         <strong>Your device. Your data.</strong>Photos are shared only when you
-                        include them in AI analysis. Saved device details stay in this browser.
+                        include them in AI analysis. Saved reports stay in this browser; they may
+                        contain observations derived from your photo, but never the image itself.
                       </p>
                     </div>
                   </aside>
@@ -1047,7 +1091,9 @@ function App() {
                           <h2>{name}</h2>
                           <p>{entry.input.symptoms}</p>
                           <span className="saved-price">
-                            Device details saved · Run AI for a fresh assessment
+                            {entry.report
+                              ? 'AI report saved · Reopen without using an AI action'
+                              : 'Device details saved · Run AI for a fresh assessment'}
                           </span>
                         </div>
                         <div className="saved-card-actions">
@@ -1055,7 +1101,8 @@ function App() {
                             className="button button-secondary"
                             onClick={() => openSaved(entry)}
                           >
-                            View estimate <ArrowRight size={15} />
+                            {entry.report ? 'View report' : 'View estimate'}{' '}
+                            <ArrowRight size={15} />
                           </button>
                           <button
                             className="icon-button"
@@ -1072,7 +1119,8 @@ function App() {
               )}
               <p className="storage-note">
                 <Info size={14} /> Clearing browser data removes saved estimates. Download a copy to
-                keep it elsewhere. Up to 30 estimates are stored.
+                keep it elsewhere. Up to 30 items are stored, subject to browser storage space.
+                Saved reports are not synced between accounts or devices.
               </p>
             </section>
           )}
@@ -1237,6 +1285,14 @@ function App() {
           </>
         )}
       </div>
+      {printing && page === 'estimate' && assessment && aiResult && (
+        <RepairPassport
+          input={assessment.input}
+          brandModel={brandModel}
+          location={location}
+          report={{ result: aiResult, history: aiHistory }}
+        />
+      )}
     </div>
   )
 }

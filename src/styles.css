@@ -16,6 +16,170 @@
   --soft: #f0f5e9;
   --serif: 'DM Serif Display', Georgia, serif;
 }
+.print-passport {
+  display: none;
+}
+.repair-coach {
+  margin: 1.5rem 0 2rem;
+  padding: clamp(1rem, 3vw, 1.6rem);
+  background: #f0f5e9;
+  border: 1px solid #c5d4b9;
+  border-radius: 14px;
+  overflow-wrap: anywhere;
+}
+.repair-coach .eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.unified-report .repair-coach h5 {
+  margin-top: 0.8rem;
+}
+.repair-coach p {
+  line-height: 1.7;
+}
+.repair-coach .coach-caveat,
+.coach-usage,
+.report-save-note {
+  color: #526049;
+  font-size: 0.8rem;
+  line-height: 1.65;
+  margin-top: 0.7rem;
+}
+.repair-coach form {
+  border-top: 1px solid #c5d4b9;
+  margin-top: 1.2rem;
+  padding-top: 0.5rem;
+}
+.coach-question {
+  display: grid;
+  gap: 0.4rem;
+  margin: 1rem 0;
+}
+.coach-question label {
+  font-weight: 600;
+}
+.coach-question small {
+  color: #526049;
+  line-height: 1.6;
+}
+.coach-question input {
+  width: 100%;
+  min-width: 0;
+  padding: 0.85rem;
+  border: 1px solid #b1c2a4;
+  border-radius: 8px;
+  color: #263c2d;
+  background: #fff;
+}
+.coach-usage {
+  display: block;
+}
+.repair-coach .button {
+  white-space: normal;
+}
+.result-actions {
+  flex-wrap: wrap;
+}
+@media print {
+  @page {
+    size: A4;
+    margin: 14mm;
+  }
+  :root {
+    background: #fff;
+    color: #17241c;
+    font-size: 10pt;
+  }
+  .app-shell:has(.print-passport) {
+    display: block;
+    min-height: 0;
+  }
+  .app-shell:has(.print-passport) > :not(.print-passport) {
+    display: none !important;
+  }
+  .print-passport {
+    display: block;
+    width: 100%;
+  }
+  .print-passport header {
+    border-bottom: 2px solid #214f3b;
+    padding-bottom: 1rem;
+  }
+  .print-passport h1 {
+    font-size: 22pt;
+    margin: 0.5rem 0;
+  }
+  .print-passport h2 {
+    font-size: 15pt;
+    margin-top: 1.5rem;
+  }
+  .print-passport h5 {
+    font-size: 11pt;
+    margin: 1.1rem 0 0.5rem;
+  }
+  .print-passport p {
+    margin: 0.5rem 0;
+    line-height: 1.55;
+  }
+  .passport-answer p,
+  .passport-observations {
+    white-space: pre-wrap;
+  }
+  .print-passport,
+  .print-passport a {
+    overflow-wrap: anywhere;
+  }
+  .print-passport .cost-table-scroll {
+    overflow: visible;
+    border: 0;
+  }
+  .print-passport .report-cost-table {
+    min-width: 0;
+    width: 100%;
+    font-size: 9pt;
+    break-inside: avoid;
+  }
+  .print-passport .report-cost-table th,
+  .print-passport .report-cost-table td {
+    padding: 6px;
+  }
+  .print-passport .cost-amount {
+    min-width: 0;
+    white-space: normal;
+  }
+  .print-passport .cost-basis {
+    font-size: 8pt;
+  }
+  .print-passport tr,
+  .print-passport .research-sources li {
+    break-inside: avoid;
+  }
+  .print-passport h2,
+  .print-passport h5,
+  .print-passport caption {
+    break-after: avoid;
+  }
+  .print-passport .cost-scroll-hint,
+  .print-passport svg {
+    display: none;
+  }
+  .print-passport .research-sources {
+    display: block;
+  }
+  .print-passport .research-sources a {
+    display: block;
+    padding: 0.3rem 0;
+  }
+  .print-passport .research-sources small {
+    display: block;
+  }
+  .print-passport footer {
+    margin-top: 1.5rem;
+    padding-top: 0.8rem;
+    border-top: 1px solid #879681;
+  }
+}
 * {
   box-sizing: border-box;
 }

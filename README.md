@@ -13,7 +13,16 @@ All four actions make a new explicit API call using the device details, the curr
 3. **Estimate repair & recycling:** generate or refresh cost tables using the device, symptoms and location. No user quote or charge is required. Tables distinguish components, labour and the complete repair; potential material value, whole-device recycler payment and possible disposal fees remain distinct.
 4. **Prepare my shop brief:** generate a tailored message, diagnostic questions and relevant observations to take to a repairer. The app does not contact a shop.
 
-The main report stays visible during follow-ups. Download exports a **device repair passport** containing the main report, follow-up questions and answers, evidence labels and source links. Up to six follow-ups are kept in the current session. Saving retains device details, brand/model and location locally; it does not retain photos or AI answers and reopening does not call an API automatically.
+The main report stays visible during follow-ups. Up to six follow-ups are kept with each report.
+
+## From an answer to a repair decision
+
+- **AI next step:** the existing assessment call can return one concise, conditional next action and its rationale. It appears above the detailed report. No recommendation is filled in if this optional API field is absent or invalid.
+- **Guided observations:** up to three API-generated questions ask about facts the user already knows. One explicit submit sends the answered questions together as **one follow-up AI action**, within the same daily allowance. It does not trigger extra model or search calls per question. A follow-up can update the next-step card.
+- **Saved repair passport:** **Save report** keeps the main API answer, cost tables, sources and submitted follow-ups in this browser. **Update saved report** replaces that saved copy after further work. Reopening and navigating between app pages preserve the answer without another API call. The generation date remains visible; saved prices are not refreshed automatically. Legacy device-only records still open.
+- **Print / PDF:** **Print passport** opens the browser print dialog for a clean report with tables, observations, dates and full reference URLs. Use the browser's Save as PDF option when available. Download retains the plain-text passport option. Neither action uses AI quota.
+
+Reports are saved only on explicit request, locally rather than under the signed-in account. Anyone with access to that browser profile can read them. They may contain photo-derived observations, but photo bytes, credentials and usage metadata are excluded, as are unsent drafts. Storage is bounded to 30 items and approximately 3 MiB of serialized data; a failed write preserves the previous saved copy. Clearing browser data removes the saved reports.
 
 ## Connect Groq + Tavily on Vercel
 

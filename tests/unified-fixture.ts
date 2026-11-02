@@ -1,4 +1,4 @@
-import type { CostEstimates, ResearchResult } from '../src/lib/research-types'
+import type { CostEstimates, ResearchResult, RepairCoach } from '../src/lib/research-types'
 export const costEstimates: CostEstimates = {
   repair: [
     {
@@ -136,4 +136,37 @@ export const guidance: ResearchResult = {
   materials: [],
   shops: [],
   repairService: 'washing machine repair',
+}
+
+export const coach: RepairCoach = {
+  nextStep: {
+    title: 'Arrange a drain-path diagnosis',
+    reason:
+      'A blocked drain path is possible; the symptoms do not confirm an internal pump failure.',
+  },
+  questions: [
+    {
+      question: 'What error code did you notice?',
+      why: 'A code may distinguish drainage from control faults.',
+    },
+    {
+      question: 'Was water left in the drum?',
+      why: 'This helps distinguish drainage from a spin-only problem.',
+    },
+    {
+      question: 'When did the problem first appear?',
+      why: 'A sudden change may point to a different cause from gradual deterioration.',
+    },
+  ],
+}
+const coachText = `Next step\n${coach.nextStep.title}. ${coach.nextStep.reason}\n\nQuestions to narrow it down\n${coach.questions.map((item) => `${item.question} ${item.why}`).join('\n')}\n\n`
+export const coachedReport: ResearchResult = {
+  ...report,
+  coach,
+  text: coachText + report.text,
+  citations: report.citations.map((item) => ({
+    ...item,
+    start: item.start + coachText.length,
+    end: item.end + coachText.length,
+  })),
 }

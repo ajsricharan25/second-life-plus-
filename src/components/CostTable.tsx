@@ -22,9 +22,11 @@ function moneyRange(low: number, high: number, currency: 'INR' | 'USD') {
 export default function CostTable({
   result,
   category,
+  context = 'Device assessment',
 }: {
   result: ResearchResult
   category: 'repair' | 'recycling'
+  context?: string
 }) {
   const repair = category === 'repair'
   const title = repair ? 'Repair cost estimates' : 'Recycling value estimates'
@@ -111,12 +113,12 @@ export default function CostTable({
     )
   }
   return (
-    <section className="report-costs" aria-label={title}>
+    <section className="report-costs" aria-label={`${title} — ${context}`}>
       <p className="cost-scroll-hint">Swipe across the table for assumptions and source details.</p>
       <div
         className="cost-table-scroll"
         role="region"
-        aria-label={`${title} table; scroll horizontally if needed`}
+        aria-label={`${title} table — ${context}; scroll horizontally if needed`}
         tabIndex={0}
       >
         <table className="report-cost-table">

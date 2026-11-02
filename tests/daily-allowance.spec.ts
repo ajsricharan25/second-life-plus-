@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 import type { BrowserContext, Page } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
-import { report } from './unified-fixture'
+import { coachedReport as report, coach } from './unified-fixture'
 
 const domain = 'second-life-test.auth0.com'
 const clientId = 'fixture-public-client'
@@ -116,9 +116,12 @@ test('sign-in protects AI actions and the third request disables new calls while
     .getByRole('button', { name: 'Estimate repair & recycling with AI', exact: true })
     .click()
   await expect(page.getByLabel('Daily AI allowance')).toContainText('1 of 3')
-  await page.getByRole('button', { name: 'Refresh assessment', exact: true }).click()
+  await page.getByLabel(coach.questions[0].question, { exact: true }).fill('I saw E1.')
+  await page.getByRole('button', { name: 'Refine with my observations' }).click()
   await expect(page.getByLabel('Daily AI allowance')).toContainText('0 of 3')
   await expect(page.getByRole('button', { name: 'Refresh assessment', exact: true })).toBeDisabled()
+  await page.getByLabel(coach.questions[0].question, { exact: true }).fill('I saw it again.')
+  await expect(page.getByRole('button', { name: 'Refine with my observations' })).toBeDisabled()
   await expect(page.getByRole('button', { name: /with AI$/, exact: false })).toBeDisabled()
   await expect(page.getByRole('button', { name: 'Download', exact: true })).toBeEnabled()
   await expect(page.getByRole('article', { name: 'AI device report' })).toBeVisible()

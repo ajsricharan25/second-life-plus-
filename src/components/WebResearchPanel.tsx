@@ -4,13 +4,20 @@ import { ArrowUpRight, BookOpen, Info, LoaderCircle, MapPin, Search, Send } from
 import { parseResearchResult } from '../lib/research-client'
 import { researchErrorMessage } from '../lib/research-errors'
 import { failureDetailLines } from '../lib/research-failure-details'
-import type { AssessmentTask, ResearchRequest, ResearchResult } from '../lib/research-types'
+import type {
+  AssessmentTask,
+  ResearchRequest,
+  ResearchResult,
+  ResearchActivity,
+  SavedReport,
+} from '../lib/research-types'
 import { buildMapsSearchUrl, buildShopMapsUrl } from '../lib/service-search'
 import ResearchAlternatives from './ResearchAlternatives'
 import CostTable from './CostTable'
+import RepairCoach from './RepairCoach'
 import { AccessError, useResearchAccess } from './ResearchAccess'
 
-type Activity = { title: string; question?: string; result: ResearchResult }
+type Activity = ResearchActivity
 const actions = [
   {
     task: 'follow-up',
@@ -50,12 +57,14 @@ export default function WebResearchPanel({
   onAutoStart,
   onResult,
   onHistory,
+  initialReport,
 }: {
   request: ResearchRequest
   autoStartToken?: number
   onAutoStart?: () => void
   onResult?: (result: ResearchResult | null) => void
   onHistory?: (history: Activity[]) => void
+  initialReport?: SavedReport
 }) {
   const access = useResearchAccess()
   const accessBlocked =
@@ -68,23 +77,26 @@ export default function WebResearchPanel({
   const [failureDetails, setFailureDetails] = useState<string[]>([])
   const [task, setTask] = useState<AssessmentTask>('follow-up')
   const [question, setQuestion] = useState('')
+  const [restored, setRestored] = useState(Boolean(initialReport))
   const controller = useRef<AbortController | null>(null)
   const busy = useRef(false)
   const requestKey = JSON.stringify(request)
+  const initial = useRef({ requestKey, report: initialReport })
   const modelOnly = result?.evidence === 'model-only'
 
   useEffect(() => {
     controller.current?.abort()
     controller.current = null
     busy.current = false
-    setResult(null)
-    setHistory([])
+    const snapshot = initial.current.requestKey === requestKey ? initial.current.report : undefined
+    setResult(snapshot?.result ?? null)
+    setHistory(snapshot?.history ?? [])
     setQuestion('')
     setStatus('idle')
     setMessage('')
     setFailureDetails([])
-    onResult?.(null)
-    onHistory?.([])
+    onResult?.(snapshot?.result ?? null)
+    onHistory?.(snapshot?.history ?? [])
     return () => controller.current?.abort()
   }, [requestKey])
 
@@ -97,7 +109,8 @@ export default function WebResearchPanel({
     return () => window.clearTimeout(timer)
   }, [autoStartToken])
 
-  async function research(nextTask: AssessmentTask) {
+  async function research(nextTask: AssessmentTask, observations?: string) {
+    const submittedQuestion = (observations ?? question).trim()
     if (busy.current) return
     if (accessBlocked) {
       setMessage(
@@ -108,7 +121,7 @@ export default function WebResearchPanel({
       return
     }
     if (nextTask !== 'assessment' && !result) return
-    if (nextTask === 'follow-up' && !question.trim()) {
+    if (nextTask === 'follow-up' && !submittedQuestion) {
       setMessage('Add your question or new observations first.')
       return
     }
@@ -133,7 +146,7 @@ export default function WebResearchPanel({
             ...textRequest,
             service: result?.repairService || textRequest.service,
             task: nextTask,
-            ...(question.trim() ? { question: question.trim() } : {}),
+            ...(submittedQuestion ? { question: submittedQuestion } : {}),
             previousAssessment: [
               result!.text.slice(0, 8500),
               ...history
@@ -169,6 +182,7 @@ export default function WebResearchPanel({
       if (controller.current !== active || active.signal.aborted) return
       if (nextTask === 'assessment') {
         setResult(parsed)
+        setRestored(false)
         onResult?.(parsed)
         setHistory([])
         onHistory?.([])
@@ -177,7 +191,7 @@ export default function WebResearchPanel({
           ...history,
           {
             title: actions.find((action) => action.task === nextTask)!.title,
-            question: question.trim(),
+            question: submittedQuestion,
             result: parsed,
           },
         ]
@@ -186,6 +200,7 @@ export default function WebResearchPanel({
         setQuestion('')
       }
       setStatus('idle')
+      return true
     } catch (error) {
       if (
         controller.current !== active ||
@@ -208,6 +223,8 @@ export default function WebResearchPanel({
   }
 
   const action = actions.find((action) => action.task === task)!
+  const updatedCoach = [...history].reverse().find((item) => item.result.coach)?.result.coach
+  const coach = updatedCoach ?? result?.coach
   let maps: string | null = null
   if (result?.repairService && request.location) {
     try {
@@ -300,6 +317,12 @@ export default function WebResearchPanel({
             {result.webSearch?.status === 'used' ? ' + Tavily web search' : ' · AI guidance'}
             {result.photoIncluded ? ' · Photo included' : ' · Symptoms and device details'}
           </p>
+          {restored && (
+            <p className="research-price-note">
+              Reopened report · No new API request. The date above is when it was generated; prices
+              and availability may have changed. Photos are not restored from saved reports.
+            </p>
+          )}
           {modelOnly && (
             <p className="research-price-note">
               {result.webSearch?.status === 'unavailable'
@@ -309,7 +332,16 @@ export default function WebResearchPanel({
               Likely causes remain unconfirmed.
             </p>
           )}
-          <CitedAnswer result={result} />
+          {coach && (
+            <RepairCoach
+              key={JSON.stringify(coach)}
+              coach={coach}
+              updated={Boolean(updatedCoach)}
+              disabled={status === 'loading' || accessBlocked || history.length >= 6}
+              onObserve={(observations) => research('follow-up', observations)}
+            />
+          )}
+          <CitedAnswer result={result} hideCoach={Boolean(coach)} />
           <div className="report-shops">
             <h5>
               <MapPin size={17} /> Nearby repair options
@@ -414,7 +446,11 @@ export default function WebResearchPanel({
             </form>
           </section>
           {history.map((item, index) => (
-            <section className="ai-conversation" key={index} aria-label={`${item.title} response`}>
+            <section
+              className="ai-conversation"
+              key={index}
+              aria-label={`${item.title} response ${index + 1}`}
+            >
               <h5>{item.title}</h5>
               {item.question && (
                 <p className="user-observation">
@@ -426,7 +462,7 @@ export default function WebResearchPanel({
                   ? 'AI guidance · no web check'
                   : 'API research · sources included'}
               </p>
-              <CitedAnswer result={item.result} />
+              <CitedAnswer result={item.result} context={`Follow-up ${index + 1}: ${item.title}`} />
             </section>
           ))}
         </article>
@@ -439,13 +475,25 @@ export default function WebResearchPanel({
   )
 }
 
-function CitedAnswer({ result }: { result: ResearchResult }) {
+export function CitedAnswer({
+  result,
+  hideCoach = false,
+  print = false,
+  context = 'Device assessment',
+}: {
+  result: ResearchResult
+  hideCoach?: boolean
+  print?: boolean
+  context?: string
+}) {
   const sources = [
     ...new Map(result.citations.map((citation) => [citation.url, citation])).values(),
   ]
   const content: ReactNode[] = []
   const costTables = new Set<'repair' | 'recycling'>()
   const headings = new Set([
+    'Next step',
+    'Questions to narrow it down',
     'Summary',
     'Why it may have occurred',
     'Likely causes',
@@ -472,8 +520,14 @@ function CitedAnswer({ result }: { result: ResearchResult }) {
           : null
     const category =
       heading === 'Repair costs' ? 'repair' : heading === 'Recycling value' ? 'recycling' : null
+    if (hideCoach && (heading === 'Next step' || heading === 'Questions to narrow it down')) {
+      offset = end + 2
+      continue
+    }
     if (category) {
-      content.push(<CostTable key={blockIndex} result={result} category={category} />)
+      content.push(
+        <CostTable key={blockIndex} result={result} category={category} context={context} />,
+      )
       costTables.add(category)
       offset = end + 2
       continue
@@ -509,21 +563,25 @@ function CitedAnswer({ result }: { result: ResearchResult }) {
   }
   for (const category of ['repair', 'recycling'] as const) {
     if (!costTables.has(category) && result.costEstimates?.[category].length)
-      content.push(<CostTable key={category} result={result} category={category} />)
+      content.push(
+        <CostTable key={category} result={result} category={category} context={context} />,
+      )
   }
   return (
     <>
-      <div className="research-answer">{content}</div>
+      <div className={print ? 'passport-answer' : 'research-answer'}>{content}</div>
       {sources.length > 0 && (
-        <details className="report-evidence">
-          <summary>Sources used in this answer ({sources.length})</summary>
+        <details className="report-evidence" open={print || undefined}>
+          <summary>
+            {print ? 'References' : 'Sources used in this answer'} ({sources.length})
+          </summary>
           <ol className="research-sources" aria-label="Research sources">
             {sources.map((source) => (
               <li key={source.url}>
                 <a href={source.url} target="_blank" rel="noreferrer">
                   <span>
                     {source.title || new URL(source.url).hostname}
-                    <small>{new URL(source.url).hostname}</small>
+                    <small>{print ? source.url : new URL(source.url).hostname}</small>
                   </span>
                   <ArrowUpRight size={14} />
                 </a>

@@ -126,11 +126,15 @@ describe('other devices', () => {
       id: 'existing',
       input: validateDeviceInput({ ...input, appliance: 'laptop' }),
     }
-    writeSavedEstimates([
-      custom,
-      existing,
-      { ...custom, id: 'invalid', input: { ...custom.input, deviceName: '' } },
-    ])
+    writeSavedEstimates([custom, existing])
+    const key = 'second-life-estimates-v1'
+    storage.set(
+      key,
+      JSON.stringify([
+        ...JSON.parse(storage.get(key)!),
+        { ...custom, id: 'invalid', input: { ...custom.input, deviceName: '' } },
+      ]),
+    )
     expect(readSavedEstimates()).toEqual([custom, existing])
   })
 })

@@ -32,6 +32,7 @@ function completion(
   sections: unknown[] = [section],
   prices: unknown[] = [],
   costEstimates?: unknown,
+  coach?: unknown,
 ) {
   return {
     choices: [
@@ -39,7 +40,7 @@ function completion(
         finish_reason: 'stop',
         message: {
           role: 'assistant',
-          content: JSON.stringify({ sections, prices, costEstimates }),
+          content: JSON.stringify({ sections, prices, costEstimates, coach }),
         },
       },
     ],
@@ -73,6 +74,41 @@ function withSearch(
 afterEach(() => vi.restoreAllMocks())
 
 describe('Groq assessment contract', () => {
+  it('returns next-step guidance in the same completion, with citation offsets still valid', async () => {
+    const coach = {
+      nextStep: {
+        title: 'Arrange a drain-path diagnosis',
+        reason: 'Symptoms alone do not establish pump failure.',
+      },
+      questions: [
+        {
+          question: 'What error code did you see?',
+          why: 'A reported code can help distinguish drainage faults.',
+        },
+      ],
+    }
+    const fetcher = withSearch(
+      completion([{ ...section, sourceIds: [1] }], [price], undefined, coach),
+    )
+    const result = await run(fetcher, true)
+    expect(fetcher).toHaveBeenCalledTimes(2)
+    expect(result.coach).toEqual(coach)
+    expect(result.text.startsWith('Next step\n')).toBe(true)
+    expect(result.text).toContain(coach.questions[0].question)
+    for (const citation of result.citations)
+      expect(result.text.slice(citation.start, citation.end)).toMatch(/^\[\d+\]$/)
+    expect(parseResearchResult(result)).toEqual(result)
+  })
+  it('keeps a useful report when the optional coach output is malformed', async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(
+        Response.json(completion([section], [], undefined, { nextStep: 'wrong shape' })),
+      )
+    const result = await run(fetcher)
+    expect(result.coach).toBeUndefined()
+    expect(result.text).toContain(section.text)
+  })
   it('uses one bounded JSON request and permits useful guidance without a search key', async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json(completion()))
     const result = await run(fetcher)
